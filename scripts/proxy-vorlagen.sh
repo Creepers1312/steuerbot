@@ -10,6 +10,8 @@ DOMAIN="$(env_wert STEUERBOT_DOMAIN)"
 ZIEL="http://$(env_wert STEUERBOT_BIND | sed 's/^0\.0\.0\.0$/127.0.0.1/;s/^$/127.0.0.1/'):$(env_wert STEUERBOT_PORT | sed 's/^$/3000/')"
 [[ "$(env_wert STEUERBOT_PROXY)" == "netzwerk" ]] && ZIEL="http://steuerbot-app:3000"
 AUS_DIR="$ROOT/deploy/generiert"
+# IPv6-Listen-Zeilen nur, wenn der Server IPv6 hat (sonst startet nginx nicht)
+V6="#"; [[ -s /proc/net/if_inet6 ]] && V6=""
 mkdir -p "$AUS_DIR"
 
 cat > "$AUS_DIR/nginx-steuerbot.conf" <<EOF
@@ -17,14 +19,14 @@ cat > "$AUS_DIR/nginx-steuerbot.conf" <<EOF
 # Zertifikatspfade anpassen (z. B. certbot --nginx -d $DOMAIN).
 server {
     listen 80;
-    listen [::]:80;
+    ${V6}listen [::]:80;
     server_name $DOMAIN;
     return 301 https://\$host\$request_uri;
 }
 
 server {
     listen 443 ssl;
-    listen [::]:443 ssl;
+    ${V6}listen [::]:443 ssl;
     http2 on;
     server_name $DOMAIN;
 

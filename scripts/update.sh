@@ -81,7 +81,9 @@ fi
 ok "Image steuerbot:$NEU_TAG gebaut"
 
 # --- 3. Proxy-Image aktualisieren ---
-if compose pull caddy >/dev/null 2>&1; then ok "Caddy-Image aktualisiert"; else warn "Caddy-Image konnte nicht aktualisiert werden – verwende vorhandenes."; fi
+if [[ "$(env_wert STEUERBOT_PROXY | grep . || echo caddy)" == "caddy" ]]; then
+  if compose pull caddy >/dev/null 2>&1; then ok "Caddy-Image aktualisiert"; else warn "Caddy-Image konnte nicht aktualisiert werden – verwende vorhandenes."; fi
+fi
 
 # --- 4. Ausrollen ---
 env_setzen STEUERBOT_IMAGE_TAG "$NEU_TAG"

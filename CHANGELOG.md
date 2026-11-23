@@ -1,5 +1,16 @@
 # Änderungsprotokoll
 
+## 1.1.0 – 2026-11-23
+
+- `scripts/deploy.sh` ist ein geführter Assistent: Erreichbarkeit, Domain (mit DNS-Prüfung), Erkennung eines
+  vorhandenen Reverse-Proxys (Traefik, Nginx Proxy Manager, nginx/Apache/Caddy, belegte Ports), TLS, erster Benutzer,
+  Sitzungsdauer, KI inkl. Modell, automatische Updates, Firewall; Zusammenfassung vor dem Ausrollen,
+  Wiederherstellung bei Abbruch; `--konfigurieren` zum Ändern
+- Vier Betriebsvarianten: mitgelieferter Caddy, Traefik-Labels, Host-Port, Docker-Netz (`deploy/compose.*.yml`)
+- `scripts/proxy-vorlagen.sh`: Vorlagen für nginx, Caddy, Apache und Nginx Proxy Manager (TLS nach TR-02102-2,
+  Streaming, Upload-Größe), IPv6 nur wenn vorhanden
+- `update.sh` berücksichtigt die gewählte Variante
+
 ## 1.0.0 – 2026-11-23
 
 Erste vollständige Version für den Familienbetrieb.

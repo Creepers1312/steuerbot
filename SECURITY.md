@@ -44,6 +44,9 @@ CON.1 Kryptokonzept) und an der **BSI TR-02102-2** (TLS).
 - TLS 1.2: ausschließlich ECDHE + AES-GCM (Forward Secrecy, AEAD); CBC, ChaCha20 und RSA-Schlüsseltransport abgelehnt
 - Schlüsselaustausch nur über NIST P-256/P-384 (X25519 ist in TR-02102-2 nicht empfohlen)
 - Geprüft mit `openssl s_client`: TLS 1.0/1.1, ChaCha20/CBC unter TLS 1.2 und X25519 werden abgelehnt
+- **Vorhandener Proxy** (Traefik, nginx, Apache, Nginx Proxy Manager): Dann liegt die TLS-Konfiguration beim
+  Betreiber. `scripts/proxy-vorlagen.sh` erzeugt Vorlagen mit denselben Einstellungen (nginx-Vorlage ebenso geprüft);
+  die App ist in diesen Varianten nur an `127.0.0.1` bzw. im Docker-Netz des Proxys erreichbar
 
 ### Container und Betrieb (SYS.1.6)
 | Maßnahme | Umsetzung |

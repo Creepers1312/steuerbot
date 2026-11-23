@@ -163,7 +163,7 @@ proxys_erkennen() {
   local name image netz
   while read -r name image; do
     [[ -z "$name" || "$name" == steuerbot-* ]] && continue
-    netz="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$name" 2>/dev/null | awk '{print $1}')"
+    netz="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$name" 2>/dev/null | awk '{print $1}' || true)"
     case "$image" in
       *traefik*) echo "traefik|Traefik (Container „$name“)|$netz" ;;
       *nginx-proxy-manager*) echo "netzwerk|Nginx Proxy Manager (Container „$name“)|$netz" ;;

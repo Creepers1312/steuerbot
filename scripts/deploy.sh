@@ -77,6 +77,12 @@ else
 fi
 
 if [[ $KONFIGURIEREN -eq 1 ]]; then
+  # Vorherigen Stand sichern – bei Abbruch wird er wiederhergestellt
+  SICHERUNG="$(mktemp "$ROOT/.env.vorher.XXXXXX")"
+  cp -p "$ENV_DATEI" "$SICHERUNG"
+  zuruecksetzen() { mv -f "$SICHERUNG" "$ENV_DATEI"; chmod 600 "$ENV_DATEI"; }
+  trap 'zuruecksetzen; echo; fehler "Abgebrochen – vorherige Konfiguration wiederhergestellt."' INT
+
   # -------------------------------------------------------------------------
   abschnitt "1/6 Erreichbarkeit"
   # -------------------------------------------------------------------------
@@ -99,10 +105,10 @@ if [[ $KONFIGURIEREN -eq 1 ]]; then
   fi
   [[ -n "$DOMAIN" ]] || fehler "Keine Domain angegeben."
   if [[ "$MODUS" == "internet" ]]; then
-    IP="$(getent ahosts "$DOMAIN" 2>/dev/null | awk 'NR==1 {print $1}')"
+    IP="$(getent ahosts "$DOMAIN" 2>/dev/null | awk 'NR==1 {print $1}' || true)"
     if [[ -z "$IP" ]]; then
       warn "„$DOMAIN“ lässt sich nicht auflösen – DNS-Eintrag (A/AAAA) auf diesen Server anlegen, sonst klappt das Zertifikat nicht."
-      frage_jn "Trotzdem fortfahren?" n || fehler "Abgebrochen – bitte zuerst DNS einrichten."
+      if [[ $INTERAKTIV -eq 1 ]]; then frage_jn "Trotzdem fortfahren?" n || fehler "Abgebrochen – bitte zuerst DNS einrichten."; fi
     else
       ok "$DOMAIN zeigt auf $IP – bitte prüfen, dass das die öffentliche Adresse dieses Servers ist."
     fi
@@ -236,7 +242,12 @@ if [[ $KONFIGURIEREN -eq 1 ]]; then
   KI:           $( [[ "$KI" -eq 1 ]] && echo "an ($MODELL)" || echo "aus" )
   Auto-Update:  $( [[ "$CRON" -eq 1 ]] && echo "wöchentlich" || echo "nein" )
 ZUSAMMEN
-  frage_jn "So einrichten?" j || fehler "Abgebrochen – .env bleibt erhalten, Änderungen bis hier sind gespeichert."
+  if ! frage_jn "So einrichten?" j; then
+    zuruecksetzen
+    fehler "Abgebrochen – vorherige Konfiguration wiederhergestellt, nichts geändert."
+  fi
+  trap - INT
+  rm -f "$SICHERUNG"
 fi
 chmod 600 "$ENV_DATEI"
 

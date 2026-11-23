@@ -76,14 +76,33 @@ cd /opt/steuerbot
 scripts/deploy.sh            # fragt Domain, TLS (E-Mail oder "internal") und ersten Benutzer ab
 ```
 
-Das Skript legt `.env` an (Rechte 600, zufälliger Sitzungsschlüssel), baut das Image (Tests laufen dabei mit),
-legt den ersten Benutzer an und startet App + TLS-Proxy. Danach:
+Der Assistent fragt Schritt für Schritt ab und prüft dabei den Server:
+
+1. **Erreichbarkeit** – im Internet mit eigener Domain, nur im Heimnetz/VPN oder nur lokal (prüft den DNS-Eintrag)
+2. **Reverse-Proxy** – erkennt automatisch einen vorhandenen Proxy (Traefik, Nginx Proxy Manager, nginx/Apache/Caddy
+   als Container oder Systemdienst) und belegte Ports 80/443:
+   | Variante | Wann | Was passiert |
+   |---|---|---|
+   | mitgelieferter Caddy | kein Proxy vorhanden | Caddy auf 80/443, Zertifikate automatisch (Let's Encrypt oder eigene CA) |
+   | Traefik | Traefik läuft schon | App ins Traefik-Netz, Routing per Labels (Entrypoint/Certresolver wählbar) |
+   | Host-Port | nginx/Apache/Caddy auf dem Server | App auf `127.0.0.1:<Port>`; fertige Vorlagen in `deploy/generiert/` |
+   | Docker-Netz | Proxy-Container, z. B. Nginx Proxy Manager | App ins Netz des Proxys als `http://steuerbot-app:3000`; Anleitung in `deploy/generiert/` |
+3. **TLS** – E-Mail für Let's Encrypt oder eigene Zertifikate (nur beim mitgelieferten Caddy)
+4. **Anmeldung** – erster Benutzer (Passwort verdeckt), Sitzungsdauer
+5. **KI** – an/aus, API-Schlüssel (verdeckt), Modell (Opus oder das günstigere Sonnet)
+6. **Automatische Updates** – wöchentlicher Cron-Job mit Rollback; bei aktiver `ufw` optional Ports freigeben
+
+Am Ende steht eine Zusammenfassung; erst nach Bestätigung wird gebaut (Tests laufen mit) und gestartet. Bei
+Abbruch bleibt die vorherige Konfiguration unverändert. Später ändern: `scripts/deploy.sh --konfigurieren`.
+Für Automatisierung gibt es alle Antworten auch als Optionen (`scripts/deploy.sh --help`).
 
 | Aufgabe | Befehl |
 |---|---|
 | Benutzer anlegen / Passwort ändern | `scripts/benutzer.sh ben` |
 | Benutzer entfernen | `scripts/benutzer.sh ben --entfernen` |
 | Aktualisieren (mit automatischem Rollback) | `scripts/update.sh` |
+| Konfiguration ändern (Proxy, Domain, KI …) | `scripts/deploy.sh --konfigurieren` |
+| Proxy-Vorlagen neu erzeugen | `scripts/proxy-vorlagen.sh` |
 | Nur Sicherheitsupdates der Basis-Images | `scripts/update.sh --nur-images` |
 | Wöchentlich automatisch aktualisieren | Cron: `17 4 * * 1 /opt/steuerbot/scripts/update.sh --ja` |
 | Status / Logs | `docker compose ps` · `docker compose logs -f app` |
