@@ -1,0 +1,35 @@
+# Mitgelieferter Reverse-Proxy: Caddy auf 80/443 mit automatischen Zertifikaten (TLS nach BSI TR-02102-2)
+services:
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${STEUERBOT_HTTP_PORT:-80}:80"
+      - "${STEUERBOT_HTTPS_PORT:-443}:443"
+    environment:
+      STEUERBOT_DOMAIN: ${STEUERBOT_DOMAIN:?STEUERBOT_DOMAIN in .env setzen}
+      STEUERBOT_TLS: ${STEUERBOT_TLS:-internal}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped
+    networks: [intern]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

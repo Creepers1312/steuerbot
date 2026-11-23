@@ -1,6 +1,13 @@
-# Steuerbot – Betrieb mit Docker Compose
-#   App:   nur intern erreichbar, read-only, ohne Root-Rechte und Capabilities
-#   Caddy: einziger offener Dienst (80/443), TLS nach BSI TR-02102-2
+# Steuerbot – Betrieb mit Docker Compose (Basis: nur die App)
+#
+# Wie die App erreichbar ist, legt STEUERBOT_PROXY in .env fest – scripts/deploy.sh fragt das ab
+# und lädt automatisch die passende Ergänzung aus deploy/:
+#   caddy     → deploy/compose.caddy.yml    mitgelieferter TLS-Proxy auf 80/443 (Standard)
+#   traefik   → deploy/compose.traefik.yml  vorhandener Traefik (Docker-Labels)
+#   port      → deploy/compose.port.yml     Port auf dem Host (z. B. 127.0.0.1:3000) für nginx/Apache/Caddy
+#   netzwerk  → deploy/compose.netzwerk.yml vorhandenes Docker-Netz (z. B. Nginx Proxy Manager)
+#
+# Die App selbst läuft read-only, ohne Root-Rechte und ohne Capabilities.
 name: steuerbot
 
 services:
@@ -26,44 +33,10 @@ services:
     cpus: 1.0
     pids_limit: 256
     restart: unless-stopped
-    networks: [web]
-    logging:
-      driver: json-file
-      options: { max-size: "10m", max-file: "5" }
-
-  caddy:
-    image: ${CADDY_IMAGE:-caddy:2-alpine}
-    depends_on:
-      app:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      STEUERBOT_DOMAIN: ${STEUERBOT_DOMAIN:?STEUERBOT_DOMAIN in .env setzen}
-      STEUERBOT_TLS: ${STEUERBOT_TLS:-internal}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    read_only: true
-    tmpfs:
-      - /tmp:size=16m
-    cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
-    security_opt:
-      - no-new-privileges:true
-    mem_limit: 256m
-    pids_limit: 128
-    restart: unless-stopped
-    networks: [web]
+    networks: [intern]
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
 
 networks:
-  web: {}
-
-volumes:
-  caddy_data: {}
-  caddy_config: {}
+  intern: {}

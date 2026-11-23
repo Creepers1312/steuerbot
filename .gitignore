@@ -44,3 +44,4 @@ next-env.d.ts
 # Betrieb
 deploy/betrieb.log
 deploy/.update.lock
+deploy/generiert/

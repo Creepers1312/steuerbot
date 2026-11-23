@@ -1,0 +1,6 @@
+# Vorhandener Reverse-Proxy auf dem Host (nginx, Apache, Caddy …): App auf einem Host-Port veröffentlichen.
+# Standard nur 127.0.0.1 – damit ist die App ausschließlich über den Proxy erreichbar.
+services:
+  app:
+    ports:
+      - "${STEUERBOT_BIND:-127.0.0.1}:${STEUERBOT_PORT:-3000}:3000"

@@ -1,0 +1,20 @@
+# Vorhandener Traefik (v2/v3): Routing über Docker-Labels, App im Netz von Traefik.
+services:
+  app:
+    networks: [intern, proxy]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${STEUERBOT_PROXY_NETZWERK:?STEUERBOT_PROXY_NETZWERK in .env setzen}
+      traefik.http.routers.steuerbot.rule: Host(`${STEUERBOT_DOMAIN}`)
+      traefik.http.routers.steuerbot.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.steuerbot.tls: "true"
+      traefik.http.routers.steuerbot.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.steuerbot.middlewares: steuerbot-sicherheit
+      traefik.http.middlewares.steuerbot-sicherheit.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.steuerbot-sicherheit.headers.stsIncludeSubdomains: "true"
+      traefik.http.services.steuerbot.loadbalancer.server.port: "3000"
+
+networks:
+  proxy:
+    external: true
+    name: ${STEUERBOT_PROXY_NETZWERK}
