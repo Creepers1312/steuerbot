@@ -221,6 +221,12 @@ table.breakdown tr.indent td:first-child { padding-left: 14px; color: var(--mute
 .fragebogen-eingabe { max-height: 60%; overflow-y: auto; }
 .fragebogen-eingabe .grid { grid-template-columns: 1fr 1fr; }
 
+/* Anmeldung */
+.login { display: grid; place-items: center; min-height: 100dvh; }
+.login form { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; }
+.login h1 { margin: 0; font-size: 22px; }
+.login .field input { min-height: 44px; font-size: 16px; }
+
 /* Sichtbarkeit je Gerät */
 @media print, (min-width: 961px) { .d-hide { display: none !important; } }
 @media screen and (max-width: 960px) {

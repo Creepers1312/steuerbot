@@ -1,0 +1,40 @@
+# Reverse-Proxy mit TLS – Konfiguration angelehnt an BSI TR-02102-2:
+#  - nur TLS 1.2 und 1.3
+#  - TLS 1.2: ausschließlich ECDHE mit AES-GCM (Perfect Forward Secrecy, AEAD)
+#  - Schlüsselaustausch: NIST P-256 / P-384 (X25519 wird von TR-02102-2 nicht empfohlen)
+#  Hinweis: Die TLS-1.3-Cipher-Suites legt Go selbst fest (AES-GCM bevorzugt, ChaCha20 als Ausweichmöglichkeit).
+{
+	# STEUERBOT_TLS: E-Mail-Adresse für Let's Encrypt – oder "internal" für Heimnetz/eigene CA
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$STEUERBOT_DOMAIN} {
+	tls {$STEUERBOT_TLS} {
+		protocols tls1.2 tls1.3
+		ciphers TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+		curves secp384r1 secp256r1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+		-Via
+	}
+
+	request_body {
+		max_size 20MB
+	}
+
+	encode zstd gzip
+
+	reverse_proxy app:3000 {
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

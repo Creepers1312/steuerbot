@@ -51,11 +51,15 @@ export default function Home() {
   const [mobilTab, setMobilTab] = useState<MobilTab>("ergebnis");
   const [modus, setModus] = useState<"fragebogen" | "ki">("fragebogen");
   const [kiVerfuegbar, setKiVerfuegbar] = useState(false);
+  const [anmeldung, setAnmeldung] = useState(false);
 
   useEffect(() => {
     fetch("/api/status")
       .then((r) => r.json())
-      .then((d) => setKiVerfuegbar(Boolean(d.ki)))
+      .then((d) => {
+        setKiVerfuegbar(Boolean(d.ki));
+        setAnmeldung(Boolean(d.anmeldung));
+      })
       .catch(() => setKiVerfuegbar(false));
   }, []);
 
@@ -103,6 +107,23 @@ export default function Home() {
     const rest = haushalte!.filter((h) => h.id !== aktiv!.id);
     setHaushalte(rest);
     setAktivId(rest[0].id);
+  }
+
+  function allesLoeschen() {
+    if (!confirm("Alle Haushalte und Angaben aus diesem Browser löschen? Das kann nicht rückgängig gemacht werden. Sichere sie vorher, falls nötig.")) return;
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignorieren */
+    }
+    const h = neuerHaushalt("Mein Haushalt");
+    setHaushalte([h]);
+    setAktivId(h.id);
+  }
+
+  async function abmelden() {
+    await fetch("/api/logout", { method: "POST" }).catch(() => undefined);
+    window.location.href = "/login";
   }
 
   function exportieren() {
@@ -155,6 +176,14 @@ export default function Home() {
       {haushalte.length > 1 && (
         <button className="secondary" onClick={loeschen}>
           Löschen
+        </button>
+      )}
+      <button className="secondary" onClick={allesLoeschen} title="Alle Steuerdaten aus diesem Browser entfernen">
+        Daten löschen
+      </button>
+      {anmeldung && (
+        <button className="secondary" onClick={abmelden}>
+          Abmelden
         </button>
       )}
     </>

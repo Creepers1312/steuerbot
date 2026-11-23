@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { chatTurn, type ChatEvent } from "@/lib/assistant/claude";
 import { parseTaxInput } from "@/lib/tax/schema";
+import { groesseOk, rateLimit } from "@/lib/sicherheit/anfrage";
 
 export const runtime = "nodejs";
 // Vercel Hobby erlaubt bis zu 60 s pro Anfrage; bei Pro kann der Wert erhöht werden
@@ -15,6 +16,9 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  if (!groesseOk(req, 3 * 1024 * 1024)) return NextResponse.json({ error: "Anfrage zu groß" }, { status: 413 });
+  const limit = await rateLimit(req, "chat", 60, 60 * 60 * 1000);
+  if (limit) return limit;
   const body = BodySchema.safeParse(await req.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: "Ungültige Anfrage" }, { status: 400 });
 
