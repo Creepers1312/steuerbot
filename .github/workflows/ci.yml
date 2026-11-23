@@ -36,12 +36,9 @@ jobs:
       - name: Image bauen
         run: docker build -t steuerbot:ci .
       - name: Image auf Schwachstellen prüfen (HIGH/CRITICAL mit verfügbarem Fix)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: steuerbot:ci
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            ghcr.io/aquasecurity/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 steuerbot:ci
       - name: Container-Smoke-Test (gehärtet wie im Betrieb)
         run: |
           docker run -d --name sb --read-only --tmpfs /tmp --tmpfs /app/.next/cache:uid=65532,gid=65532 \
