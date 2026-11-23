@@ -28,7 +28,7 @@ COPY . .
 RUN npm run lint && npx tsc --noEmit && npm test && npm run build
 
 # Laufzeit-Image per Digest festgenagelt – Dependabot schlägt Aktualisierungen vor
-FROM gcr.io/distroless/nodejs22-debian12:nonroot@sha256:13593b7570658e8477de39e2f4a1dd25db2f836d68a0ba771251572d23bb4f8e AS runtime
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:f991e86a080567b6ab7c3392e36f7a0a4f9300639e526b48ee81b92d523af62e AS runtime
 ARG VERSION=unbekannt
 LABEL org.opencontainers.image.title="Steuerbot" \
       org.opencontainers.image.description="Steuererstattung schätzen – Familienbetrieb" \
