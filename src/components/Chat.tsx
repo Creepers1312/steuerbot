@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { applyPatch, type Patch } from "@/lib/assistant/patch";
 import { belegZuPatch, type BelegDaten } from "@/lib/assistant/beleg-mapping";
+import { belegAuslesenLassen } from "@/lib/assistant/beleg-upload";
 import type { TaxInput } from "@/lib/tax/schema";
 
 export interface ChatEintrag {
@@ -144,12 +145,7 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
     setVorschlag(null);
     onChatChange([...eintraege, { role: "system", text: `📎 ${file.name} wird ausgelesen …` }], history);
     try {
-      const fd = new FormData();
-      fd.append("datei", file);
-      const res = await fetch("/api/beleg", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
-      const beleg = data.beleg as BelegDaten;
+      const beleg = await belegAuslesenLassen(file);
       setVorschlag({ ...belegZuPatch(beleg, input, belegPerson), beleg });
     } catch (e) {
       onChatChange([...eintraege, { role: "error", text: e instanceof Error ? e.message : String(e) }], history);

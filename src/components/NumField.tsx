@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatZahlEingabe, parseZahl } from "@/lib/zahl";
+import { formatZahlEingabe, parseZahl } from "@/lib/format";
 
 /** Zahlenfeld, das deutsche Schreibweise versteht (Komma, Tausenderpunkt) und auf dem Handy die Ziffern-Tastatur zeigt. */
 export function NumField({

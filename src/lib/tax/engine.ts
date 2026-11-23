@@ -15,6 +15,7 @@ import {
 } from "./params";
 import type { Person, TaxInput } from "./schema";
 import { grenzsteuersatz, tarifMitProgressionsvorbehalt } from "./tariff";
+import { abrundenCent, euro, runde2, zahl } from "../format";
 
 export interface Posten {
   label: string;
@@ -79,9 +80,6 @@ export interface TaxResult {
   hinweise: string[];
 }
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
-const eur = (n: number) => `${n.toLocaleString("de-DE", { maximumFractionDigits: 2 })} €`;
-const floorCent = (n: number) => Math.floor(n * 100 + 1e-9) / 100;
 
 function werbungskosten(p: Person, prm: YearParams) {
   const posten: Posten[] = [];
@@ -90,7 +88,7 @@ function werbungskosten(p: Person, prm: YearParams) {
     let pendler =
       p.arbeitstageBuero * (Math.min(km, 20) * prm.pendlerBis20 + Math.max(0, km - 20) * prm.pendlerAb21);
     if (!p.mitPkw) pendler = Math.min(pendler, prm.pendlerHoechstbetragOhnePkw);
-    posten.push({ label: `Entfernungspauschale (${km} km × ${p.arbeitstageBuero} Tage)`, betrag: r2(pendler) });
+    posten.push({ label: `Entfernungspauschale (${km} km × ${p.arbeitstageBuero} Tage)`, betrag: runde2(pendler) });
   }
   if (p.homeofficeTage > 0) {
     const tage = Math.min(p.homeofficeTage, prm.homeofficeMaxTage);
@@ -103,7 +101,7 @@ function werbungskosten(p: Person, prm: YearParams) {
   if (p.gewerkschaftsbeitraege > 0 && !prm.gewerkschaftUeberPauschbetrag) {
     posten.push({ label: "Gewerkschaftsbeiträge", betrag: p.gewerkschaftsbeitraege });
   }
-  const tatsaechlich = r2(posten.reduce((s, x) => s + x.betrag, 0));
+  const tatsaechlich = runde2(posten.reduce((s, x) => s + x.betrag, 0));
 
   let angesetzt: number;
   let pauschbetragGenutzt: boolean;
@@ -120,7 +118,7 @@ function werbungskosten(p: Person, prm: YearParams) {
     posten.push({ label: "Gewerkschaftsbeiträge (zusätzlich zum Pauschbetrag)", betrag: p.gewerkschaftsbeitraege });
     angesetzt += p.gewerkschaftsbeitraege;
   }
-  return { posten, tatsaechlich, angesetzt: r2(angesetzt), pauschbetragGenutzt };
+  return { posten, tatsaechlich, angesetzt: runde2(angesetzt), pauschbetragGenutzt };
 }
 
 function vorsorge(p: Person, prm: YearParams): number {
@@ -129,7 +127,7 @@ function vorsorge(p: Person, prm: YearParams): number {
   // Grenzgänger tragen ihre Krankenversicherung ohne steuerfreien Arbeitgeberzuschuss → höherer Höchstbetrag
   const hoechst = p.arbeitsland === "CH" ? SCHWEIZ.sonstigeVorsorgeOhneZuschuss : prm.sonstigeVorsorgeHoechstbetrag;
   const sonstige = Math.max(basisKvPv, Math.min(hoechst, p.kvArbeitnehmer + p.pvArbeitnehmer + p.avArbeitnehmer));
-  return r2(alters + sonstige);
+  return runde2(alters + sonstige);
 }
 
 /** Aufteilung von Lohnausweis Ziffer 9 in AHV/IV/EO (Altersvorsorge) und ALV/NBU (sonstige Vorsorge). */
@@ -146,22 +144,22 @@ export function ziffer9Aufteilen(brutto: number, ziffer9: number) {
  * - ALV, NBU und überobligatorische BVG-Beiträge als sonstige Vorsorgeaufwendungen.
  * - Krankenversicherung: selbst gezahlte deutsche Beiträge (kv/pv) oder Schweizer KVG-Prämie.
  */
-export function effektivePerson(p: Person, kurs: number): Person {
+function effektivePerson(p: Person, kurs: number): Person {
   if (p.arbeitsland !== "CH") return p;
   const { ahv, alv, nbu } = ziffer9Aufteilen(p.chBruttolohn, p.chZiffer9);
   const bvgObligatorisch = Math.max(0, p.chBvg - p.chBvgUeberobligatorisch);
   const rv = (ahv + bvgObligatorisch) * kurs;
   return {
     ...p,
-    bruttolohn: r2(p.chBruttolohn * kurs),
+    bruttolohn: runde2(p.chBruttolohn * kurs),
     lohnsteuer: 0,
     soliEinbehalten: 0,
     kirchensteuerEinbehalten: 0,
-    rvArbeitnehmer: r2(rv),
-    rvArbeitgeber: r2(rv),
-    kvArbeitnehmer: r2(p.kvArbeitnehmer + p.chKvgPraemie * kurs),
+    rvArbeitnehmer: runde2(rv),
+    rvArbeitgeber: runde2(rv),
+    kvArbeitnehmer: runde2(p.kvArbeitnehmer + p.chKvgPraemie * kurs),
     krankengeldAnspruch: p.chKvgPraemie > 0 ? false : p.krankengeldAnspruch,
-    avArbeitnehmer: r2((alv + nbu + p.chBvgUeberobligatorisch) * kurs),
+    avArbeitnehmer: runde2((alv + nbu + p.chBvgUeberobligatorisch) * kurs),
   };
 }
 
@@ -192,76 +190,36 @@ export function zumutbareBelastung(gesamtbetrag: number, splitting: boolean, anz
   return Math.floor(summe);
 }
 
-export function berechne(input: TaxInput): TaxResult {
-  const prm = PARAMS[input.jahr];
-  const splitting = input.zusammenveranlagung && input.personen.length === 2;
-  const originalPersonen = splitting ? input.personen : input.personen.slice(0, 1);
-  const hatGrenzgaenger = originalPersonen.some((p) => p.arbeitsland === "CH");
-  const kurs = input.chfKurs > 0 ? input.chfKurs : prm.chfKurs;
-  const personen = originalPersonen.map((p) => effektivePerson(p, kurs));
+/** Summe über eine Liste. */
+const summe = <T,>(liste: readonly T[], wert: (x: T) => number) => liste.reduce((s, x) => s + wert(x), 0);
+
+function personErgebnis(p: Person, i: number, prm: YearParams, kurs: number): PersonErgebnis {
+  const wk = werbungskosten(p, prm);
+  const unverbrauchterPauschbetrag = wk.pauschbetragGenutzt ? Math.max(0, prm.arbeitnehmerPauschbetrag - p.bruttolohn) : 0;
+  return {
+    name: p.name || (i === 0 ? "Person 1" : "Person 2"),
+    bruttolohn: p.bruttolohn,
+    werbungskostenPosten: wk.posten,
+    werbungskostenTatsaechlich: wk.tatsaechlich,
+    werbungskostenAngesetzt: wk.angesetzt,
+    pauschbetragGenutzt: wk.pauschbetragGenutzt,
+    einkuenfte: runde2(p.bruttolohn - wk.angesetzt),
+    vorsorgeaufwendungen: vorsorge(p, prm),
+    behindertenPauschbetrag: behindertenPauschbetrag(p),
+    progressionsvorbehalt: Math.max(0, p.lohnersatzleistungen - unverbrauchterPauschbetrag),
+    arbeitsland: p.arbeitsland,
+    quellensteuerAnrechenbar:
+      p.arbeitsland === "CH" ? runde2(Math.min(p.chQuellensteuer, p.chBruttolohn * SCHWEIZ.quellensteuerMax) * kurs) : 0,
+  };
+}
+
+function personenHinweise(ergebnisse: PersonErgebnis[], prm: YearParams): string[] {
   const hinweise: string[] = [];
-
-  // ---------- Einkünfte je Person ----------
-  const personenErgebnisse: PersonErgebnis[] = personen.map((p, i) => {
-    const wk = werbungskosten(p, prm);
-    const einkuenfte = r2(p.bruttolohn - wk.angesetzt);
-    const unverbrauchterPauschbetrag = wk.pauschbetragGenutzt
-      ? Math.max(0, prm.arbeitnehmerPauschbetrag - p.bruttolohn)
-      : 0;
-    return {
-      name: p.name || (i === 0 ? "Person 1" : "Person 2"),
-      bruttolohn: p.bruttolohn,
-      werbungskostenPosten: wk.posten,
-      werbungskostenTatsaechlich: wk.tatsaechlich,
-      werbungskostenAngesetzt: wk.angesetzt,
-      pauschbetragGenutzt: wk.pauschbetragGenutzt,
-      einkuenfte,
-      vorsorgeaufwendungen: vorsorge(p, prm),
-      behindertenPauschbetrag: behindertenPauschbetrag(p),
-      progressionsvorbehalt: Math.max(0, p.lohnersatzleistungen - unverbrauchterPauschbetrag),
-      arbeitsland: p.arbeitsland,
-      quellensteuerAnrechenbar:
-        p.arbeitsland === "CH" ? r2(Math.min(p.chQuellensteuer, p.chBruttolohn * SCHWEIZ.quellensteuerMax) * kurs) : 0,
-    };
-  });
-
-  if (hatGrenzgaenger) {
-    for (const [i, p] of originalPersonen.entries()) {
-      if (p.arbeitsland !== "CH") continue;
-      const name = personenErgebnisse[i].name;
-      if (p.nichtrueckkehrtage > SCHWEIZ.maxNichtrueckkehrtage) {
-        hinweise.push(
-          `${name}: Mehr als ${SCHWEIZ.maxNichtrueckkehrtage} Nichtrückkehrtage – die Grenzgängerregel greift nicht. Dann besteuert die Schweiz den Lohn voll und Deutschland stellt ihn frei (Progressionsvorbehalt). Das rechnet diese App nicht – das Ergebnis ist für diesen Fall nicht verlässlich.`,
-        );
-      }
-      if (p.chQuellensteuer > p.chBruttolohn * SCHWEIZ.quellensteuerMax + 1) {
-        hinweise.push(
-          `${name}: Es wurde mehr als 4,5 % Quellensteuer einbehalten. Angerechnet werden nur 4,5 % – den Rest kannst du bei der Steuerverwaltung des Kantons zurückfordern (meist fehlte die Ansässigkeitsbescheinigung Gre-1).`,
-        );
-      }
-      if (p.chBvgUeberobligatorisch > 0) {
-        hinweise.push(
-          `${name}: Überobligatorische Arbeitgeberbeiträge zur Pensionskasse können in Deutschland teilweise steuerpflichtiger Arbeitslohn sein. Das ist hier nicht berücksichtigt – bei hohen Beiträgen kann die Steuer etwas höher ausfallen.`,
-        );
-      }
-    }
-    hinweise.push(
-      prm.chfKursVorlaeufig && !(input.chfKurs > 0)
-        ? `Umrechnung mit vorläufigem Kurs ${kurs.toLocaleString("de-DE")} € je CHF – der amtliche Jahreskurs ${input.jahr} wird erst nach Jahresende veröffentlicht.`
-        : `Umrechnung mit ${kurs.toLocaleString("de-DE")} € je CHF (Jahreskurs ${input.jahr}).`,
-    );
-    if (input.vorauszahlungen === 0) {
-      hinweise.push(
-        "Grenzgänger zahlen in Deutschland keine Lohnsteuer über den Arbeitgeber. Ohne Vorauszahlungen ergibt sich deshalb meist eine Nachzahlung – trag geleistete Vorauszahlungen ein, falls das Finanzamt welche festgesetzt hat.",
-      );
-    }
-  }
-
-  for (const pe of personenErgebnisse) {
+  for (const pe of ergebnisse) {
     if (pe.pauschbetragGenutzt && pe.bruttolohn > 0) {
       const fehlt = prm.arbeitnehmerPauschbetrag - pe.werbungskostenTatsaechlich;
       hinweise.push(
-        `${pe.name}: Werbungskosten (${eur(pe.werbungskostenTatsaechlich)}) liegen unter dem Pauschbetrag – es wird der Pauschbetrag von ${eur(prm.arbeitnehmerPauschbetrag)} angesetzt. Erst ab ${eur(fehlt)} weiteren Kosten wirkt sich jeder Beleg aus.`,
+        `${pe.name}: Werbungskosten (${euro(pe.werbungskostenTatsaechlich)}) liegen unter dem Pauschbetrag – es wird der Pauschbetrag von ${euro(prm.arbeitnehmerPauschbetrag)} angesetzt. Erst ab ${euro(fehlt)} weiteren Kosten wirkt sich jeder Beleg aus.`,
       );
     }
     if (pe.progressionsvorbehalt > 410) {
@@ -270,147 +228,195 @@ export function berechne(input: TaxInput): TaxResult {
       );
     }
   }
+  return hinweise;
+}
 
-  const summeEinkuenfte = r2(personenErgebnisse.reduce((s, p) => s + p.einkuenfte, 0));
-  const anzahlKinder = input.kinder.filter((k) => k.monate > 0).length;
-
-  let entlastung = 0;
-  if (!splitting && input.alleinerziehend && anzahlKinder > 0) {
-    entlastung = prm.alleinerziehendErstesKind + (anzahlKinder - 1) * prm.alleinerziehendWeiteresKind;
-  }
-  const gesamtbetrag = r2(summeEinkuenfte - entlastung);
-
-  // ---------- Sonderausgaben ----------
-  const vorsorgeSumme = r2(personenErgebnisse.reduce((s, p) => s + p.vorsorgeaufwendungen, 0));
-  const sonderausgabenPosten: Posten[] = [];
-  const kist = r2(
-    personen.reduce((s, p) => s + (p.kirchenmitglied ? p.kirchensteuerEinbehalten : 0), 0) + input.weitereKirchensteuer,
+function grenzgaengerHinweise(original: Person[], ergebnisse: PersonErgebnis[], input: TaxInput, prm: YearParams, kurs: number): string[] {
+  if (!original.some((p) => p.arbeitsland === "CH")) return [];
+  const hinweise: string[] = [];
+  original.forEach((p, i) => {
+    if (p.arbeitsland !== "CH") return;
+    const name = ergebnisse[i].name;
+    if (p.nichtrueckkehrtage > SCHWEIZ.maxNichtrueckkehrtage) {
+      hinweise.push(
+        `${name}: Mehr als ${SCHWEIZ.maxNichtrueckkehrtage} Nichtrückkehrtage – die Grenzgängerregel greift nicht. Dann besteuert die Schweiz den Lohn voll und Deutschland stellt ihn frei (Progressionsvorbehalt). Das rechnet diese App nicht – das Ergebnis ist für diesen Fall nicht verlässlich.`,
+      );
+    }
+    if (p.chQuellensteuer > p.chBruttolohn * SCHWEIZ.quellensteuerMax + 1) {
+      hinweise.push(
+        `${name}: Es wurde mehr als 4,5 % Quellensteuer einbehalten. Angerechnet werden nur 4,5 % – den Rest kannst du bei der Steuerverwaltung des Kantons zurückfordern (meist fehlte die Ansässigkeitsbescheinigung Gre-1).`,
+      );
+    }
+    if (p.chBvgUeberobligatorisch > 0) {
+      hinweise.push(
+        `${name}: Überobligatorische Arbeitgeberbeiträge zur Pensionskasse können in Deutschland teilweise steuerpflichtiger Arbeitslohn sein. Das ist hier nicht berücksichtigt – bei hohen Beiträgen kann die Steuer etwas höher ausfallen.`,
+      );
+    }
+  });
+  hinweise.push(
+    prm.chfKursVorlaeufig && !(input.chfKurs > 0)
+      ? `Umrechnung mit vorläufigem Kurs ${zahl(kurs, 4)} € je CHF – der amtliche Jahreskurs ${input.jahr} wird erst nach Jahresende veröffentlicht.`
+      : `Umrechnung mit ${zahl(kurs, 4)} € je CHF (Jahreskurs ${input.jahr}).`,
   );
-  if (kist > 0) sonderausgabenPosten.push({ label: "Gezahlte Kirchensteuer", betrag: kist });
+  if (input.vorauszahlungen === 0) {
+    hinweise.push(
+      "Grenzgänger zahlen in Deutschland keine Lohnsteuer über den Arbeitgeber. Ohne Vorauszahlungen ergibt sich deshalb meist eine Nachzahlung – trag geleistete Vorauszahlungen ein, falls das Finanzamt welche festgesetzt hat.",
+    );
+  }
+  return hinweise;
+}
+
+/** Sonderausgaben außer Vorsorge: Kirchensteuer, Kinderbetreuung, Spenden – mindestens der Pauschbetrag. */
+function weitereSonderausgaben(input: TaxInput, personen: Person[], gesamtbetrag: number, anzahlKinder: number, splitting: boolean, prm: YearParams) {
+  const posten: Posten[] = [];
+  const kist = runde2(summe(personen, (p) => (p.kirchenmitglied ? p.kirchensteuerEinbehalten : 0)) + input.weitereKirchensteuer);
+  if (kist > 0) posten.push({ label: "Gezahlte Kirchensteuer", betrag: kist });
   if (input.kinderbetreuungskosten > 0) {
     const max = 4_800 * Math.max(1, anzahlKinder);
-    const abzug = r2(Math.min(input.kinderbetreuungskosten * 0.8, max));
-    sonderausgabenPosten.push({ label: "Kinderbetreuungskosten (80 %)", betrag: abzug });
+    posten.push({ label: "Kinderbetreuungskosten (80 %)", betrag: runde2(Math.min(input.kinderbetreuungskosten * 0.8, max)) });
   }
   if (input.spenden > 0) {
-    const abzug = r2(Math.min(input.spenden, Math.max(0, gesamtbetrag) * 0.2));
-    sonderausgabenPosten.push({ label: "Spenden und Mitgliedsbeiträge", betrag: abzug });
+    posten.push({ label: "Spenden und Mitgliedsbeiträge", betrag: runde2(Math.min(input.spenden, Math.max(0, gesamtbetrag) * 0.2)) });
   }
-  const weitereSA = r2(sonderausgabenPosten.reduce((s, x) => s + x.betrag, 0));
-  const saPausch = prm.sonderausgabenPauschbetrag * (splitting ? 2 : 1);
-  const weitereSonderausgaben = Math.max(weitereSA, saPausch);
+  const betrag = Math.max(runde2(summe(posten, (x) => x.betrag)), prm.sonderausgabenPauschbetrag * (splitting ? 2 : 1));
+  return { posten, betrag };
+}
 
-  // ---------- Außergewöhnliche Belastungen ----------
+/** Günstigerprüfung Kindergeld ↔ Kinderfreibeträge (für alle Kinder gemeinsam). */
+function kinderPruefung(input: TaxInput, einkommen: number, progression: number, splitting: boolean, prm: YearParams) {
+  let freibetraege = 0;
+  let kindergeld = 0;
+  for (const k of input.kinder) {
+    const anteil = splitting || k.vollerFreibetrag ? 1 : 0.5;
+    freibetraege += ((prm.kinderfreibetrag + prm.beaFreibetrag) * k.monate * anteil) / 12;
+    kindergeld += prm.kindergeldMonat * k.monate * anteil;
+  }
+  freibetraege = Math.round(freibetraege);
+  const estOhne = tarifMitProgressionsvorbehalt(einkommen, progression, prm.tariff, splitting);
+  const zvEMit = Math.max(0, einkommen - freibetraege);
+  const estMit = tarifMitProgressionsvorbehalt(zvEMit, progression, prm.tariff, splitting);
+  const guenstiger = freibetraege > 0 && estOhne - estMit > kindergeld;
+  return { freibetraege, kindergeld, estOhne, estMit, zvEMit, guenstiger };
+}
+
+/** Solidaritätszuschlag und Kirchensteuer auf die Bemessungsgrundlage (§ 51a EStG). */
+function zuschlagsteuern(bemessung: number, personen: Person[], ergebnisse: PersonErgebnis[], input: TaxInput, splitting: boolean, prm: YearParams) {
+  const freigrenze = prm.soliFreigrenze * (splitting ? 2 : 1);
+  const soli = bemessung <= freigrenze ? 0 : abrundenCent(Math.min(bemessung * 0.055, (bemessung - freigrenze) * 0.119));
+  const satz = BUNDESLAENDER[input.bundesland].kirchensteuer;
+  const mitglieder = personen.filter((p) => p.kirchenmitglied).length;
+  if (mitglieder === 0) return { soli, kirchensteuer: 0, hinweis: null };
+  if (mitglieder === personen.length) return { soli, kirchensteuer: abrundenCent(bemessung * satz), hinweis: null };
+  // Vereinfachung: Aufteilung nach Anteil an den Einkünften
+  const anteil =
+    summe(personen.map((p, i) => (p.kirchenmitglied ? Math.max(0, ergebnisse[i].einkuenfte) : 0)), (x) => x) /
+    Math.max(1, summe(ergebnisse, (p) => Math.max(0, p.einkuenfte)));
+  return {
+    soli,
+    kirchensteuer: abrundenCent(bemessung * satz * anteil),
+    hinweis: "Nur ein Ehepartner ist Kirchenmitglied – Kirchensteuer vereinfacht nach Einkommensanteil geschätzt.",
+  };
+}
+
+export function berechne(input: TaxInput): TaxResult {
+  const prm = PARAMS[input.jahr];
+  const splitting = input.zusammenveranlagung && input.personen.length === 2;
+  const originalPersonen = splitting ? input.personen : input.personen.slice(0, 1);
+  const kurs = input.chfKurs > 0 ? input.chfKurs : prm.chfKurs;
+  const personen = originalPersonen.map((p) => effektivePerson(p, kurs));
+
+  // Einkünfte je Person
+  const ergebnisse = personen.map((p, i) => personErgebnis(p, i, prm, kurs));
+  const hinweise = [...grenzgaengerHinweise(originalPersonen, ergebnisse, input, prm, kurs), ...personenHinweise(ergebnisse, prm)];
+
+  const summeEinkuenfte = runde2(summe(ergebnisse, (p) => p.einkuenfte));
+  const anzahlKinder = input.kinder.filter((k) => k.monate > 0).length;
+  const entlastung =
+    !splitting && input.alleinerziehend && anzahlKinder > 0
+      ? prm.alleinerziehendErstesKind + (anzahlKinder - 1) * prm.alleinerziehendWeiteresKind
+      : 0;
+  const gesamtbetrag = runde2(summeEinkuenfte - entlastung);
+
+  // Sonderausgaben
+  const vorsorgeSumme = runde2(summe(ergebnisse, (p) => p.vorsorgeaufwendungen));
+  const sa = weitereSonderausgaben(input, personen, gesamtbetrag, anzahlKinder, splitting, prm);
+
+  // Außergewöhnliche Belastungen
   const zumutbar = zumutbareBelastung(gesamtbetrag, splitting, anzahlKinder);
   const krankheit = Math.max(0, input.krankheitskosten - zumutbar);
   if (input.krankheitskosten > 0 && krankheit === 0) {
     hinweise.push(
-      `Krankheitskosten (${eur(input.krankheitskosten)}) liegen unter der zumutbaren Belastung (${eur(zumutbar)}) und wirken sich nicht aus.`,
+      `Krankheitskosten (${euro(input.krankheitskosten)}) liegen unter der zumutbaren Belastung (${euro(zumutbar)}) und wirken sich nicht aus.`,
     );
   }
-  const behinderung = personenErgebnisse.reduce((s, p) => s + p.behindertenPauschbetrag, 0);
-  const agB = r2(krankheit + behinderung);
+  const agB = runde2(krankheit + summe(ergebnisse, (p) => p.behindertenPauschbetrag));
+  const einkommen = Math.max(0, runde2(gesamtbetrag - vorsorgeSumme - sa.betrag - agB));
 
-  const einkommen = Math.max(0, r2(gesamtbetrag - vorsorgeSumme - weitereSonderausgaben - agB));
-
-  // ---------- Kinder: Günstigerprüfung Kindergeld vs. Kinderfreibetrag ----------
-  let kfb = 0;
-  let kindergeld = 0;
-  for (const k of input.kinder) {
-    const anteil = splitting || k.vollerFreibetrag ? 1 : 0.5;
-    kfb += ((prm.kinderfreibetrag + prm.beaFreibetrag) * k.monate * anteil) / 12;
-    kindergeld += prm.kindergeldMonat * k.monate * anteil;
-  }
-  kfb = Math.round(kfb);
-
-  const progression = personenErgebnisse.reduce((s, p) => s + p.progressionsvorbehalt, 0);
-  const estOhneKfb = tarifMitProgressionsvorbehalt(einkommen, progression, prm.tariff, splitting);
-  const zvEMitKfb = Math.max(0, einkommen - kfb);
-  const estMitKfb = tarifMitProgressionsvorbehalt(zvEMitKfb, progression, prm.tariff, splitting);
-  const kfbGuenstiger = kfb > 0 && estOhneKfb - estMitKfb > kindergeld;
-
-  const zvE = Math.floor(kfbGuenstiger ? zvEMitKfb : einkommen);
-  const tariflicheESt = kfbGuenstiger ? estMitKfb : estOhneKfb;
-  if (kfb > 0) {
+  // Kinder
+  const kinder = kinderPruefung(input, einkommen, summe(ergebnisse, (p) => p.progressionsvorbehalt), splitting, prm);
+  const zvE = Math.floor(kinder.guenstiger ? kinder.zvEMit : einkommen);
+  const tariflicheESt = kinder.guenstiger ? kinder.estMit : kinder.estOhne;
+  if (kinder.freibetraege > 0) {
     hinweise.push(
-      kfbGuenstiger
-        ? `Kinderfreibeträge sind günstiger als das Kindergeld (${eur(estOhneKfb - estMitKfb)} Steuerersparnis > ${eur(kindergeld)} Kindergeld). Das Kindergeld wird der Steuer hinzugerechnet.`
-        : `Das Kindergeld (${eur(kindergeld)}) ist günstiger als die Kinderfreibeträge – keine Hinzurechnung.`,
+      kinder.guenstiger
+        ? `Kinderfreibeträge sind günstiger als das Kindergeld (${euro(kinder.estOhne - kinder.estMit)} Steuerersparnis > ${euro(kinder.kindergeld)} Kindergeld). Das Kindergeld wird der Steuer hinzugerechnet.`
+        : `Das Kindergeld (${euro(kinder.kindergeld)}) ist günstiger als die Kinderfreibeträge – keine Hinzurechnung.`,
     );
   }
 
-  // ---------- Steuerermäßigungen § 35a ----------
-  const haushaltsnah = Math.min(input.haushaltsnaheDienstleistungen * PARAGRAPH_35A.satz, PARAGRAPH_35A.haushaltsnahMax);
-  const handwerker = Math.min(input.handwerkerLohnkosten * PARAGRAPH_35A.satz, PARAGRAPH_35A.handwerkerMax);
-  const ermaessigung = r2(Math.min(tariflicheESt, haushaltsnah + handwerker));
+  // Steuerermäßigungen § 35a
+  const ermaessigung35a =
+    Math.min(input.haushaltsnaheDienstleistungen * PARAGRAPH_35A.satz, PARAGRAPH_35A.haushaltsnahMax) +
+    Math.min(input.handwerkerLohnkosten * PARAGRAPH_35A.satz, PARAGRAPH_35A.handwerkerMax);
+  const ermaessigung = runde2(Math.min(tariflicheESt, ermaessigung35a));
+  const kindergeldHinzurechnung = kinder.guenstiger ? kinder.kindergeld : 0;
+  const festzusetzendeESt = runde2(tariflicheESt - ermaessigung + kindergeldHinzurechnung);
 
-  const kindergeldHinzurechnung = kfbGuenstiger ? kindergeld : 0;
-  const festzusetzendeESt = r2(tariflicheESt - ermaessigung + kindergeldHinzurechnung);
+  // Zuschlagsteuern: Bemessung immer mit Kinderfreibeträgen
+  const bemessung = Math.max(0, kinder.estMit - Math.min(kinder.estMit, ermaessigung35a));
+  const zuschlag = zuschlagsteuern(bemessung, personen, ergebnisse, input, splitting, prm);
+  if (zuschlag.hinweis) hinweise.push(zuschlag.hinweis);
+  const steuerGesamt = runde2(festzusetzendeESt + zuschlag.soli + zuschlag.kirchensteuer);
 
-  // ---------- Zuschlagsteuern: Bemessung immer mit Kinderfreibeträgen (§ 51a EStG) ----------
-  const bemessung = Math.max(0, estMitKfb - Math.min(estMitKfb, haushaltsnah + handwerker));
-  const freigrenze = prm.soliFreigrenze * (splitting ? 2 : 1);
-  const soli = bemessung <= freigrenze ? 0 : floorCent(Math.min(bemessung * 0.055, (bemessung - freigrenze) * 0.119));
-
-  const kistSatz = BUNDESLAENDER[input.bundesland].kirchensteuer;
-  let kirchensteuer = 0;
-  const mitglieder = personen.filter((p) => p.kirchenmitglied).length;
-  if (mitglieder === personen.length) {
-    kirchensteuer = floorCent(bemessung * kistSatz);
-  } else if (mitglieder > 0) {
-    // Vereinfachung: Aufteilung nach Anteil an den Einkünften
-    const anteil = personen.reduce(
-      (s, p, i) => s + (p.kirchenmitglied ? Math.max(0, personenErgebnisse[i].einkuenfte) : 0),
-      0,
-    ) / Math.max(1, personenErgebnisse.reduce((s, p) => s + Math.max(0, p.einkuenfte), 0));
-    kirchensteuer = floorCent(bemessung * kistSatz * anteil);
-    hinweise.push("Nur ein Ehepartner ist Kirchenmitglied – Kirchensteuer vereinfacht nach Einkommensanteil geschätzt.");
-  }
-
-  const steuerGesamt = r2(festzusetzendeESt + soli + kirchensteuer);
-  // Schweizer Quellensteuer wird auf die Einkommensteuer angerechnet (höchstens bis zu deren Höhe)
-  const quellensteuer = r2(
-    Math.min(festzusetzendeESt, personenErgebnisse.reduce((s, p) => s + p.quellensteuerAnrechenbar, 0)),
-  );
+  // Bereits gezahlt – Schweizer Quellensteuer wird bis zur Höhe der Einkommensteuer angerechnet
   const gezahlt = {
-    lohnsteuer: r2(personen.reduce((s, p) => s + p.lohnsteuer, 0)),
-    soli: r2(personen.reduce((s, p) => s + p.soliEinbehalten, 0)),
-    kirchensteuer: r2(personen.reduce((s, p) => s + p.kirchensteuerEinbehalten, 0)),
-    quellensteuer,
+    lohnsteuer: runde2(summe(personen, (p) => p.lohnsteuer)),
+    soli: runde2(summe(personen, (p) => p.soliEinbehalten)),
+    kirchensteuer: runde2(summe(personen, (p) => p.kirchensteuerEinbehalten)),
+    quellensteuer: runde2(Math.min(festzusetzendeESt, summe(ergebnisse, (p) => p.quellensteuerAnrechenbar))),
     vorauszahlungen: input.vorauszahlungen,
     gesamt: 0,
   };
-  gezahlt.gesamt = r2(gezahlt.lohnsteuer + gezahlt.soli + gezahlt.kirchensteuer + gezahlt.quellensteuer + gezahlt.vorauszahlungen);
-
-  const summeBrutto = personen.reduce((s, p) => s + p.bruttolohn, 0);
+  gezahlt.gesamt = runde2(gezahlt.lohnsteuer + gezahlt.soli + gezahlt.kirchensteuer + gezahlt.quellensteuer + gezahlt.vorauszahlungen);
+  const summeBrutto = summe(personen, (p) => p.bruttolohn);
 
   return {
     jahr: input.jahr,
     splitting,
-    personen: personenErgebnisse,
+    personen: ergebnisse,
     summeEinkuenfte,
     entlastungsbetragAlleinerziehende: entlastung,
     gesamtbetragEinkuenfte: gesamtbetrag,
     vorsorgeaufwendungen: vorsorgeSumme,
-    weitereSonderausgaben,
-    sonderausgabenPosten,
+    weitereSonderausgaben: sa.betrag,
+    sonderausgabenPosten: sa.posten,
     aussergewoehnlicheBelastungen: agB,
     zumutbareBelastung: zumutbar,
     einkommen,
-    kinderfreibetraege: kfbGuenstiger ? kfb : 0,
-    kinderfreibetragGuenstiger: kfbGuenstiger,
-    kindergeldAnspruch: kindergeld,
+    kinderfreibetraege: kinder.guenstiger ? kinder.freibetraege : 0,
+    kinderfreibetragGuenstiger: kinder.guenstiger,
+    kindergeldAnspruch: kinder.kindergeld,
     zvE,
     tariflicheESt,
     steuerermaessigung35a: ermaessigung,
     kindergeldHinzurechnung,
     festzusetzendeESt,
-    soli,
-    kirchensteuer,
+    soli: zuschlag.soli,
+    kirchensteuer: zuschlag.kirchensteuer,
     steuerGesamt,
     bereitsGezahlt: gezahlt,
-    chfKurs: hatGrenzgaenger ? kurs : undefined,
-    erstattung: r2(gezahlt.gesamt - steuerGesamt),
+    chfKurs: originalPersonen.some((p) => p.arbeitsland === "CH") ? kurs : undefined,
+    erstattung: runde2(gezahlt.gesamt - steuerGesamt),
     grenzsteuersatz: grenzsteuersatz(zvE, prm.tariff, splitting),
     durchschnittssteuersatz: summeBrutto > 0 ? festzusetzendeESt / summeBrutto : 0,
     hinweise,

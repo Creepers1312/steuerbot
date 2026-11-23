@@ -6,6 +6,7 @@ import type { BelegDaten } from "../assistant/beleg-mapping";
 import type { TaxInput } from "../tax/schema";
 import { KATALOG } from "./katalog";
 import { KAPITEL, type Antwort, type BelegEintrag, type Ctx, type Frage, type InterviewStand, type KapitelId, type Schritt } from "./typen";
+import { euro, zahl } from "../format";
 
 /**
  * Alle Schritte, die beim aktuellen Datenstand relevant sind (Bedingungen erfüllt).
@@ -151,7 +152,7 @@ export function belegHinzufuegen(
   const next = frage.anwenden(manuell + summe(belege), ctx);
   // Noch nicht in den Verlauf: die Frage gilt erst mit „Weiter“ als beantwortet
   const antworten = { ...stand.antworten, [`${schritt.key}#entwurf`]: { wert: manuell, belege } };
-  return { input: next, stand: { ...stand, antworten }, text: `${beleg.beschreibung}: ${betrag.toLocaleString("de-DE")} €` };
+  return { input: next, stand: { ...stand, antworten }, text: `${beleg.beschreibung}: ${euro(betrag)}` };
 }
 
 /** Belege einer Sammel-Frage (auch solche, die vor „Weiter“ hinzugefügt wurden). */
@@ -195,13 +196,13 @@ export function antwortText(schritt: Schritt, antwort: Antwort | undefined): str
     case "auswahl":
       return frage.optionen(schritt.ctx).find((o) => o.wert === w)?.label ?? String(w);
     case "zahl":
-      return `${Number(w).toLocaleString("de-DE")} ${frage.einheit}`;
+      return `${zahl(Number(w))} ${frage.einheit}`;
     case "text":
       return String(w) || "–";
     case "sammeln": {
       const s = (Number(w) || 0) + summe(antwort.belege ?? []);
       const n = antwort.belege?.length ?? 0;
-      return `${s.toLocaleString("de-DE", { maximumFractionDigits: 2 })} €${n ? ` (${n} Beleg${n > 1 ? "e" : ""})` : ""}`;
+      return `${euro(s)}${n ? ` (${n} Beleg${n > 1 ? "e" : ""})` : ""}`;
     }
     case "dokument":
       return w === "beleg" ? "📄 Beleg übernommen" : "Werte eingetragen";
@@ -210,5 +211,3 @@ export function antwortText(schritt: Schritt, antwort: Antwort | undefined): str
   }
 }
 
-/** Schlüssel ohne Entwürfe – zum Zählen und Anzeigen. */
-export const istEntwurf = (key: string) => key.endsWith("#entwurf");

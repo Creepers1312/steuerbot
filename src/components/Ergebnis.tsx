@@ -1,15 +1,14 @@
 "use client";
 
+import { euro } from "@/lib/format";
 import type { TaxResult } from "@/lib/tax/engine";
 
-const eur = (n: number, digits = 0) =>
-  n.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 function Row({ label, value, sum, indent, minus }: { label: string; value: number; sum?: boolean; indent?: boolean; minus?: boolean }) {
   return (
     <tr className={`${sum ? "sum" : ""} ${indent ? "indent" : ""}`}>
       <td>{label}</td>
-      <td>{minus && value > 0 ? "− " : ""}{eur(value, 2)}</td>
+      <td>{minus && value > 0 ? "− " : ""}{euro(value, 2)}</td>
     </tr>
   );
 }
@@ -29,7 +28,7 @@ export function ErgebnisHero({
     <div className="card hero">
       <div className="label">Voraussichtlich für {r.jahr}</div>
       <div className={`amount ${keineDaten ? "" : plus ? "plus" : "minus"}`}>
-        {keineDaten ? "–" : `${plus ? "+" : "−"} ${eur(Math.abs(r.erstattung))}`}
+        {keineDaten ? "–" : `${plus ? "+" : "−"} ${euro(Math.abs(r.erstattung), 0)}`}
       </div>
       <div className="sub">
         {keineDaten

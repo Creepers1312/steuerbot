@@ -4,8 +4,10 @@ import { useState, type ReactNode } from "react";
 import type { TaxResult } from "@/lib/tax/engine";
 import { BUNDESLAENDER, type Bundesland, type SupportedYear } from "@/lib/tax/params";
 import { KindSchema, parseTaxInput, type Person, type TaxInput } from "@/lib/tax/schema";
+import { LOHNAUSWEIS_CH, LOHNSTEUERBESCHEINIGUNG } from "@/lib/tax/belegfelder";
 import HochrechnungPanel from "./HochrechnungPanel";
 import { NumField } from "./NumField";
+import { euro, franken, zahl } from "@/lib/format";
 
 interface Props {
   input: TaxInput;
@@ -13,7 +15,6 @@ interface Props {
   onChange: (next: TaxInput) => void;
 }
 
-const eur0 = (n: number) => `${Math.round(n).toLocaleString("de-DE")} €`;
 
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -157,7 +158,7 @@ export default function DatenFormular({ input, ergebnis, onChange }: Props) {
             </div>
           </Abschnitt>
 
-          <Abschnitt titel="Spenden & Kinderbetreuung" info={sonderausgabenInfo ? eur0(sonderausgabenInfo) : undefined}>
+          <Abschnitt titel="Spenden & Kinderbetreuung" info={sonderausgabenInfo ? euro(sonderausgabenInfo, 0) : undefined}>
             <div className="grid">
               <NumField label="Spenden & Mitgliedsbeiträge" einheit="€" value={input.spenden} onChange={(v) => update({ spenden: v })} />
               <NumField
@@ -177,7 +178,7 @@ export default function DatenFormular({ input, ergebnis, onChange }: Props) {
           </Abschnitt>
 
           {input.personen.some((p) => p.arbeitsland === "CH") && (
-            <Abschnitt titel="Grenzgänger: Vorauszahlungen & Kurs" info={input.vorauszahlungen ? eur0(input.vorauszahlungen) : undefined} offen>
+            <Abschnitt titel="Grenzgänger: Vorauszahlungen & Kurs" info={input.vorauszahlungen ? euro(input.vorauszahlungen, 0) : undefined} offen>
               <div className="grid">
                 <NumField
                   label="Geleistete Vorauszahlungen"
@@ -188,7 +189,7 @@ export default function DatenFormular({ input, ergebnis, onChange }: Props) {
                 />
                 <NumField
                   label="Eigener Kurs"
-                  hint={`leer = amtlich (${ergebnis.chfKurs?.toLocaleString("de-DE") ?? "–"} € je CHF)`}
+                  hint={`leer = amtlich (${ergebnis.chfKurs ? zahl(ergebnis.chfKurs, 4) : "–"} € je CHF)`}
                   einheit="€/CHF"
                   value={input.chfKurs}
                   onChange={(v) => update({ chfKurs: v })}
@@ -197,7 +198,7 @@ export default function DatenFormular({ input, ergebnis, onChange }: Props) {
             </Abschnitt>
           )}
 
-          <Abschnitt titel="Handwerker, Haushalt & Gesundheit" info={haushaltInfo ? eur0(haushaltInfo) : undefined}>
+          <Abschnitt titel="Handwerker, Haushalt & Gesundheit" info={haushaltInfo ? euro(haushaltInfo, 0) : undefined}>
             <div className="grid">
               <NumField
                 label="Handwerker – nur Lohnkosten"
@@ -267,16 +268,16 @@ function PersonForm({
         <>
           <Abschnitt
             titel="Schweizer Lohnausweis"
-            info={p.chBruttolohn ? `Brutto ${Math.round(p.chBruttolohn).toLocaleString("de-DE")} CHF` : "noch leer"}
+            info={p.chBruttolohn ? `Brutto ${franken(p.chBruttolohn, 0)}` : "noch leer"}
             offen={!p.chBruttolohn}
           >
             <p className="muted" style={{ marginTop: 0 }}>
               Beträge in Franken wie auf dem Lohnausweis – die App rechnet mit dem amtlichen Jahreskurs in Euro um.
             </p>
             <div className="grid">
-              <NumField label="Bruttolohn" hint="Ziffer 8" einheit="CHF" value={p.chBruttolohn} onChange={(v) => onChange({ chBruttolohn: v })} />
-              <NumField label="AHV/IV/EO/ALV/NBUV" hint="Ziffer 9" einheit="CHF" value={p.chZiffer9} onChange={(v) => onChange({ chZiffer9: v })} />
-              <NumField label="Pensionskasse (BVG)" hint="Ziffer 10" einheit="CHF" value={p.chBvg} onChange={(v) => onChange({ chBvg: v })} />
+              {LOHNAUSWEIS_CH.map((f) => (
+                <NumField key={f.feld} label={f.label} hint={f.stelle} einheit="CHF" value={p[f.feld]} onChange={(v) => onChange({ [f.feld]: v })} />
+              ))}
               <NumField
                 label="davon überobligatorisch"
                 hint="Pensionskassenausweis, sonst 0"
@@ -284,7 +285,6 @@ function PersonForm({
                 value={p.chBvgUeberobligatorisch}
                 onChange={(v) => onChange({ chBvgUeberobligatorisch: v })}
               />
-              <NumField label="Quellensteuer" hint="Ziffer 12" einheit="CHF" value={p.chQuellensteuer} onChange={(v) => onChange({ chQuellensteuer: v })} />
               <NumField
                 label="Nichtrückkehrtage"
                 hint="beruflich nicht heimgekehrt"
@@ -319,7 +319,7 @@ function PersonForm({
       ) : (
       <Abschnitt
         titel="Lohnsteuerbescheinigung"
-        info={p.bruttolohn ? `Brutto ${eur0(p.bruttolohn)}` : "noch leer"}
+        info={p.bruttolohn ? `Brutto ${euro(p.bruttolohn, 0)}` : "noch leer"}
         offen={!p.bruttolohn}
       >
         <HochrechnungPanel
@@ -327,21 +327,9 @@ function PersonForm({
           onUebernehmen={(werte) => onChange({ ...werte, kirchenmitglied: p.kirchenmitglied || werte.kirchensteuerEinbehalten > 0 })}
         />
         <div className="grid">
-          <NumField label="Bruttoarbeitslohn" hint="Zeile 3" einheit="€" value={p.bruttolohn} onChange={(v) => onChange({ bruttolohn: v })} />
-          <NumField label="Lohnsteuer" hint="Zeile 4" einheit="€" value={p.lohnsteuer} onChange={(v) => onChange({ lohnsteuer: v })} />
-          <NumField label="Solidaritätszuschlag" hint="Zeile 5" einheit="€" value={p.soliEinbehalten} onChange={(v) => onChange({ soliEinbehalten: v })} />
-          <NumField
-            label="Kirchensteuer"
-            hint="Zeile 6/7"
-            einheit="€"
-            value={p.kirchensteuerEinbehalten}
-            onChange={(v) => onChange({ kirchensteuerEinbehalten: v })}
-          />
-          <NumField label="Rente Arbeitgeber" hint="Zeile 22a" einheit="€" value={p.rvArbeitgeber} onChange={(v) => onChange({ rvArbeitgeber: v })} />
-          <NumField label="Rente Arbeitnehmer" hint="Zeile 23a" einheit="€" value={p.rvArbeitnehmer} onChange={(v) => onChange({ rvArbeitnehmer: v })} />
-          <NumField label="Krankenversicherung" hint="Zeile 25" einheit="€" value={p.kvArbeitnehmer} onChange={(v) => onChange({ kvArbeitnehmer: v })} />
-          <NumField label="Pflegeversicherung" hint="Zeile 26" einheit="€" value={p.pvArbeitnehmer} onChange={(v) => onChange({ pvArbeitnehmer: v })} />
-          <NumField label="Arbeitslosenvers." hint="Zeile 27" einheit="€" value={p.avArbeitnehmer} onChange={(v) => onChange({ avArbeitnehmer: v })} />
+          {LOHNSTEUERBESCHEINIGUNG.map((f) => (
+            <NumField key={f.feld} label={f.label} hint={f.stelle} einheit="€" value={p[f.feld]} onChange={(v) => onChange({ [f.feld]: v })} />
+          ))}
           <NumField
             label="Elterngeld / ALG I / Kurzarbeitergeld"
             einheit="€"
@@ -352,7 +340,7 @@ function PersonForm({
       </Abschnitt>
       )}
 
-      <Abschnitt titel="Arbeitsweg & Homeoffice" info={wegInfo ? eur0(wegInfo) : undefined}>
+      <Abschnitt titel="Arbeitsweg & Homeoffice" info={wegInfo ? euro(wegInfo, 0) : undefined}>
         <div className="grid">
           <NumField label="Arbeitsweg (einfach)" einheit="km" value={p.entfernungKm} onChange={(v) => onChange({ entfernungKm: v })} />
           <NumField label="Tage im Büro" ganzzahl einheit="Tage" value={p.arbeitstageBuero} onChange={(v) => onChange({ arbeitstageBuero: v })} />
@@ -363,7 +351,7 @@ function PersonForm({
         </div>
       </Abschnitt>
 
-      <Abschnitt titel="Weitere Werbungskosten" info={weitereInfo ? eur0(weitereInfo) : undefined}>
+      <Abschnitt titel="Weitere Werbungskosten" info={weitereInfo ? euro(weitereInfo, 0) : undefined}>
         <div className="grid">
           <NumField label="Arbeitsmittel" hint="Laptop, Fachbücher" einheit="€" value={p.arbeitsmittel} onChange={(v) => onChange({ arbeitsmittel: v })} />
           <NumField label="Fortbildung" einheit="€" value={p.fortbildung} onChange={(v) => onChange({ fortbildung: v })} />

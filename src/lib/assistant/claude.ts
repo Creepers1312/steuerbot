@@ -6,7 +6,7 @@ import type { TaxInput } from "../tax/schema";
 import { GehaltsabrechnungSchema, hochrechnen } from "../tax/hochrechnung";
 import { PatchSchema, applyPatch, compactInput } from "./patch";
 
-export const MODEL = process.env.STEUERBOT_MODEL ?? "claude-opus-5-5";
+const MODEL = process.env.STEUERBOT_MODEL ?? "claude-opus-5-5";
 const MAX_TOOL_ROUNDS = 8;
 
 let client: Anthropic | undefined;
@@ -73,7 +73,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = ([
   },
 ] satisfies Anthropic.Beta.BetaTool[]).map((t) => ({ ...t, eager_input_streaming: true }));
 
-export function resultSummary(r: TaxResult) {
+function resultSummary(r: TaxResult) {
   return {
     voraussichtlicheErstattung: r.erstattung,
     bedeutung: r.erstattung >= 0 ? "Erstattung" : "Nachzahlung",
@@ -266,7 +266,7 @@ export async function chatTurn(
 
 const num = (beschreibung: string) => z.number().nullable().describe(beschreibung);
 
-export const BelegSchema = z.object({
+const BelegSchema = z.object({
   belegart: z.enum([
     "lohnsteuerbescheinigung",
     "lohnausweis_ch",
@@ -340,7 +340,7 @@ export const BelegSchema = z.object({
     .nullable(),
   unsicherheiten: z.array(z.string()).describe("Werte, die schlecht lesbar oder mehrdeutig waren"),
 });
-export type Beleg = z.infer<typeof BelegSchema>;
+type Beleg = z.infer<typeof BelegSchema>;
 
 export async function belegAuslesen(
   data: string,

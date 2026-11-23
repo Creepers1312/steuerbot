@@ -4,7 +4,7 @@ import { clientIp, erlaubt } from "./ratelimit";
 import { SITZUNGS_COOKIE, authKonfig, gueltigeSitzung } from "./sitzung";
 
 /** Kennung für Rate-Limits: angemeldeter Benutzer, sonst IP. */
-export async function anfrageKennung(req: Request): Promise<string> {
+async function anfrageKennung(req: Request): Promise<string> {
   const konf = authKonfig();
   if (konf.aktiv) {
     const cookie = req.headers.get("cookie") ?? "";

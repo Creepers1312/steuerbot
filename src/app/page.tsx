@@ -1,91 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Chat, { type ChatEintrag } from "@/components/Chat";
+import { useMemo, useState } from "react";
+import Chat from "@/components/Chat";
 import DatenFormular from "@/components/DatenFormular";
-import Fragebogen from "@/components/Fragebogen";
-import { LEERER_STAND, type InterviewStand } from "@/lib/interview/typen";
 import ElsterHilfe from "@/components/ElsterHilfe";
 import { ErgebnisDetails, ErgebnisHero } from "@/components/Ergebnis";
+import Fragebogen from "@/components/Fragebogen";
+import { euro } from "@/lib/format";
+import { LEERER_STAND } from "@/lib/interview/typen";
 import { berechne } from "@/lib/tax/engine";
-import { defaultInput, parseTaxInput, type TaxInput } from "@/lib/tax/schema";
-
-interface Haushalt {
-  id: string;
-  name: string;
-  input: TaxInput;
-  eintraege: ChatEintrag[];
-  history: unknown[];
-  interview?: InterviewStand;
-}
+import { useHaushalte, useServerStatus } from "@/lib/useHaushalte";
 
 type MobilTab = "ergebnis" | "angaben" | "assistent" | "elster";
-
-const STORAGE_KEY = "steuerbot.haushalte.v1";
-
-function neuerHaushalt(name: string): Haushalt {
-  return { id: crypto.randomUUID(), name, input: defaultInput(), eintraege: [], history: [] };
-}
-
-function laden(): Haushalt[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const list = JSON.parse(raw) as Haushalt[];
-    return list.map((h) => ({ ...h, input: parseTaxInput(h.input) }));
-  } catch {
-    return [];
-  }
-}
-
-const eur0 = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 
 /** Klassen: auf Desktop / auf dem Handy ausblenden */
 const cls = (desktopSichtbar: boolean, mobilSichtbar: boolean) =>
   [desktopSichtbar ? "" : "d-hide", mobilSichtbar ? "" : "m-hide"].join(" ").trim();
 
 export default function Home() {
-  const [haushalte, setHaushalte] = useState<Haushalt[] | null>(null);
-  const [aktivId, setAktivId] = useState<string>("");
+  const { haushalte, aktiv, setAktivId, aendern, anlegen, loeschen, allesLoeschen, exportieren, importieren } = useHaushalte();
+  const { ki: kiVerfuegbar, anmeldung } = useServerStatus();
   const [ansicht, setAnsicht] = useState<"rechner" | "elster">("rechner");
   const [mobilTab, setMobilTab] = useState<MobilTab>("ergebnis");
   const [modus, setModus] = useState<"fragebogen" | "ki">("fragebogen");
-  const [kiVerfuegbar, setKiVerfuegbar] = useState(false);
-  const [anmeldung, setAnmeldung] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/status")
-      .then((r) => r.json())
-      .then((d) => {
-        setKiVerfuegbar(Boolean(d.ki));
-        setAnmeldung(Boolean(d.anmeldung));
-      })
-      .catch(() => setKiVerfuegbar(false));
-  }, []);
-
-  useEffect(() => {
-    const list = laden();
-    const start = list.length ? list : [neuerHaushalt("Mein Haushalt")];
-    setHaushalte(start);
-    setAktivId(start[0].id);
-  }, []);
-
-  useEffect(() => {
-    if (!haushalte) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(haushalte));
-    } catch {
-      /* Speicher voll oder blockiert – App funktioniert trotzdem */
-    }
-  }, [haushalte]);
-
-  const aktiv = haushalte?.find((h) => h.id === aktivId) ?? haushalte?.[0];
   const ergebnis = useMemo(() => (aktiv ? berechne(aktiv.input) : null), [aktiv]);
 
   if (!haushalte || !aktiv || !ergebnis) return <div className="shell">Lädt …</div>;
-
-  const aendern = (patch: Partial<Haushalt>) =>
-    setHaushalte((list) => list!.map((h) => (h.id === aktiv.id ? { ...h, ...patch } : h)));
 
   const wechseln = (tab: MobilTab) => {
     setMobilTab(tab);
@@ -96,59 +36,30 @@ export default function Home() {
 
   function hinzufuegen() {
     const name = prompt("Name des Haushalts (z. B. „Mama & Papa“):");
-    if (!name) return;
-    const h = neuerHaushalt(name);
-    setHaushalte([...haushalte!, h]);
-    setAktivId(h.id);
+    if (name) anlegen(name);
   }
 
-  function loeschen() {
-    if (haushalte!.length <= 1 || !confirm(`„${aktiv!.name}“ wirklich löschen?`)) return;
-    const rest = haushalte!.filter((h) => h.id !== aktiv!.id);
-    setHaushalte(rest);
-    setAktivId(rest[0].id);
-  }
+  const aktivenLoeschen = () => {
+    if (haushalte.length > 1 && confirm(`„${aktiv.name}“ wirklich löschen?`)) loeschen();
+  };
 
-  function allesLoeschen() {
-    if (!confirm("Alle Haushalte und Angaben aus diesem Browser löschen? Das kann nicht rückgängig gemacht werden. Sichere sie vorher, falls nötig.")) return;
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignorieren */
+  function datenLoeschen() {
+    if (confirm("Alle Haushalte und Angaben aus diesem Browser löschen? Das kann nicht rückgängig gemacht werden. Sichere sie vorher, falls nötig.")) {
+      allesLoeschen();
     }
-    const h = neuerHaushalt("Mein Haushalt");
-    setHaushalte([h]);
-    setAktivId(h.id);
+  }
+
+  async function laden(datei: File) {
+    try {
+      await importieren(datei);
+    } catch {
+      alert("Die Datei konnte nicht gelesen werden.");
+    }
   }
 
   async function abmelden() {
     await fetch("/api/logout", { method: "POST" }).catch(() => undefined);
     window.location.href = "/login";
-  }
-
-  function exportieren() {
-    const blob = new Blob([JSON.stringify(aktiv, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `steuerbot-${aktiv!.name.replace(/\W+/g, "_")}-${aktiv!.input.jahr}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
-  async function importieren(file: File) {
-    try {
-      const h = JSON.parse(await file.text()) as Haushalt;
-      const neu: Haushalt = {
-        ...neuerHaushalt(h.name ?? "Import"),
-        input: parseTaxInput(h.input),
-        eintraege: h.eintraege ?? [],
-        history: h.history ?? [],
-      };
-      setHaushalte([...haushalte!, neu]);
-      setAktivId(neu.id);
-    } catch {
-      alert("Die Datei konnte nicht gelesen werden.");
-    }
   }
 
   const haushaltAuswahl = (
@@ -171,14 +82,14 @@ export default function Home() {
       </button>
       <label className="secondary button-like">
         Laden
-        <input type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importieren(e.target.files[0])} />
+        <input type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && laden(e.target.files[0])} />
       </label>
       {haushalte.length > 1 && (
-        <button className="secondary" onClick={loeschen}>
+        <button className="secondary" onClick={aktivenLoeschen}>
           Löschen
         </button>
       )}
-      <button className="secondary" onClick={allesLoeschen} title="Alle Steuerdaten aus diesem Browser entfernen">
+      <button className="secondary" onClick={datenLoeschen} title="Alle Steuerdaten aus diesem Browser entfernen">
         Daten löschen
       </button>
       {anmeldung && (
@@ -229,7 +140,7 @@ export default function Home() {
         <button className="minibar d-hide no-print" onClick={() => wechseln("ergebnis")}>
           <span>Voraussichtlich {aktiv.input.jahr}</span>
           <strong className={keineDaten ? "" : plus ? "plus" : "minus"}>
-            {keineDaten ? "–" : `${plus ? "+" : "−"} ${eur0(Math.abs(ergebnis.erstattung))}`}
+            {keineDaten ? "–" : `${plus ? "+" : "−"} ${euro(Math.abs(ergebnis.erstattung), 0)}`}
           </strong>
         </button>
       )}

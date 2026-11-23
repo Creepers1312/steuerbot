@@ -25,7 +25,7 @@ export function splittingtarif(zvE: number, t: TariffZones): number {
   return 2 * grundtarif(Math.floor(Math.max(0, zvE)) / 2, t);
 }
 
-export function tarif(zvE: number, t: TariffZones, splitting: boolean): number {
+function tarif(zvE: number, t: TariffZones, splitting: boolean): number {
   return splitting ? splittingtarif(zvE, t) : grundtarif(zvE, t);
 }
 

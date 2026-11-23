@@ -87,7 +87,7 @@ const PERSON_DEFAULTS: z.infer<typeof PersonFields> = {
   nichtrueckkehrtage: 0,
 };
 
-export const KindFields = z.object({
+const KindFields = z.object({
   name: z.string().max(60),
   monate: z.number().int().min(0).max(12).describe("Monate im Jahr mit Kindergeldanspruch (Geburt/Ausbildungsende anteilig)"),
   vollerFreibetrag: z
@@ -150,7 +150,6 @@ export const TaxInputSchema = HaushaltFields.partial()
 
 export type Person = z.output<typeof PersonSchema>;
 export type Kind = z.output<typeof KindSchema>;
-export type TaxInputRaw = z.input<typeof TaxInputSchema>;
 export type TaxInput = z.output<typeof TaxInputSchema>;
 
 export function parseTaxInput(raw: unknown): TaxInput {

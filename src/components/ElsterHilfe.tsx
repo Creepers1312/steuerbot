@@ -3,8 +3,8 @@
 import { ausfuellhilfe } from "@/lib/tax/ausfuellhilfe";
 import type { TaxResult } from "@/lib/tax/engine";
 import type { TaxInput } from "@/lib/tax/schema";
+import { euro } from "@/lib/format";
 
-const eur = (n: number) => `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
 export default function ElsterHilfe({ input, r }: { input: TaxInput; r: TaxResult }) {
   const abschnitte = ausfuellhilfe(input, r);
@@ -40,7 +40,7 @@ export default function ElsterHilfe({ input, r }: { input: TaxInput; r: TaxResul
         </div>
       ))}
       <p className="disclaimer">
-        Voraussichtliches Ergebnis: {r.erstattung >= 0 ? "Erstattung" : "Nachzahlung"} {eur(Math.abs(r.erstattung))}. Schätzung
+        Voraussichtliches Ergebnis: {r.erstattung >= 0 ? "Erstattung" : "Nachzahlung"} {euro(Math.abs(r.erstattung), 2)}. Schätzung
         ohne Gewähr.
       </p>
     </div>

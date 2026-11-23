@@ -6,6 +6,7 @@ import { z } from "zod";
 import { PARAMS, type SupportedYear } from "./params";
 import type { Person } from "./schema";
 import { grundtarif } from "./tariff";
+import { runde2 } from "../format";
 
 const euro = z.number().min(0).max(1_000_000);
 
@@ -40,7 +41,6 @@ export type HochgerechneteWerte = Pick<
   | "avArbeitnehmer"
 >;
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
 
 export function hochrechnen(g: Gehaltsabrechnung, jahr: SupportedYear): HochgerechneteWerte {
   const faktor = g.modus === "monat" ? 12 : 12 / g.monat;
@@ -65,16 +65,16 @@ export function hochrechnen(g: Gehaltsabrechnung, jahr: SupportedYear): Hochgere
   const rv = g.rv * faktor + einmalSV.rv;
 
   return {
-    bruttolohn: r2(jahrBrutto + g.einmalzahlungBrutto),
-    lohnsteuer: r2(lstGesamt),
-    soliEinbehalten: r2(lstGesamt * soliQuote),
-    kirchensteuerEinbehalten: r2(lstGesamt * kistQuote),
-    rvArbeitnehmer: r2(rv),
+    bruttolohn: runde2(jahrBrutto + g.einmalzahlungBrutto),
+    lohnsteuer: runde2(lstGesamt),
+    soliEinbehalten: runde2(lstGesamt * soliQuote),
+    kirchensteuerEinbehalten: runde2(lstGesamt * kistQuote),
+    rvArbeitnehmer: runde2(rv),
     // Arbeitgeber zahlt in der Regel denselben RV-Beitrag
-    rvArbeitgeber: r2(rv),
-    kvArbeitnehmer: r2(g.kv * faktor + einmalSV.kv),
-    pvArbeitnehmer: r2(g.pv * faktor + einmalSV.pv),
-    avArbeitnehmer: r2(g.av * faktor + einmalSV.av),
+    rvArbeitgeber: runde2(rv),
+    kvArbeitnehmer: runde2(g.kv * faktor + einmalSV.kv),
+    pvArbeitnehmer: runde2(g.pv * faktor + einmalSV.pv),
+    avArbeitnehmer: runde2(g.av * faktor + einmalSV.av),
   };
 }
 
@@ -92,12 +92,12 @@ export function sonderzahlungAufschlagen(w: HochgerechneteWerte, betrag: number,
   const soliQuote = w.lohnsteuer > 0 ? w.soliEinbehalten / w.lohnsteuer : 0;
   const kistQuote = w.lohnsteuer > 0 ? w.kirchensteuerEinbehalten / w.lohnsteuer : 0;
   const lst = Math.max(0, w.lohnsteuer + mehrLSt);
-  const sk = (x: number) => r2(Math.max(0, x * (1 + quote)));
+  const sk = (x: number) => runde2(Math.max(0, x * (1 + quote)));
   return {
-    bruttolohn: r2(Math.max(0, w.bruttolohn + betrag)),
-    lohnsteuer: r2(lst),
-    soliEinbehalten: r2(lst * soliQuote),
-    kirchensteuerEinbehalten: r2(lst * kistQuote),
+    bruttolohn: runde2(Math.max(0, w.bruttolohn + betrag)),
+    lohnsteuer: runde2(lst),
+    soliEinbehalten: runde2(lst * soliQuote),
+    kirchensteuerEinbehalten: runde2(lst * kistQuote),
     rvArbeitnehmer: sk(w.rvArbeitnehmer),
     rvArbeitgeber: sk(w.rvArbeitgeber),
     kvArbeitnehmer: sk(w.kvArbeitnehmer),

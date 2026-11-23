@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { BelegDaten } from "@/lib/assistant/beleg-mapping";
+import { belegAuslesenLassen } from "@/lib/assistant/beleg-upload";
 import {
   antwortText,
   beantworten,
@@ -17,6 +17,7 @@ import { LEERER_STAND, type InterviewStand, type Schritt } from "@/lib/interview
 import { berechne } from "@/lib/tax/engine";
 import type { TaxInput } from "@/lib/tax/schema";
 import { NumField } from "./NumField";
+import { euro } from "@/lib/format";
 
 interface Props {
   input: TaxInput;
@@ -28,7 +29,6 @@ interface Props {
   umschalter?: React.ReactNode;
 }
 
-const eur0 = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 
 export default function Fragebogen({ input, stand, kiVerfuegbar, onChange, onKiChat, onZiel, umschalter }: Props) {
   const [bearbeiten, setBearbeiten] = useState<string | null>(null);
@@ -114,7 +114,7 @@ export default function Fragebogen({ input, stand, kiVerfuegbar, onChange, onKiC
             </div>
             {deltas[s.key] ? (
               <div className={`msg system delta ${deltas[s.key] > 0 ? "plus" : "minus"}`}>
-                {deltas[s.key] > 0 ? `+ ${eur0(deltas[s.key])} Erstattung 🎉` : `− ${eur0(-deltas[s.key])}`}
+                {deltas[s.key] > 0 ? `+ ${euro(deltas[s.key], 0)} Erstattung 🎉` : `− ${euro(-deltas[s.key], 0)}`}
               </div>
             ) : null}
           </div>
@@ -186,7 +186,7 @@ function Abschluss({
       <div style={{ fontWeight: 600, marginBottom: 4 }}>Geschafft! 🎉</div>
       <div>
         Voraussichtlich bekommst du{" "}
-        <strong>{erstattung >= 0 ? `${eur0(erstattung)} zurück` : `keine Erstattung – Nachzahlung ${eur0(-erstattung)}`}</strong>.
+        <strong>{erstattung >= 0 ? `${euro(erstattung, 0)} zurück` : `keine Erstattung – Nachzahlung ${euro(-erstattung, 0)}`}</strong>.
         Tipp auf eine Antwort oben, um sie zu ändern.
       </div>
       <div className="abschluss-aktionen">
@@ -250,12 +250,7 @@ function Eingabe({
     setLaedt(true);
     setMeldung(null);
     try {
-      const fd = new FormData();
-      fd.append("datei", file);
-      const res = await fetch("/api/beleg", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
-      const r = belegHinzufuegen(input, stand, schritt, data.beleg as BelegDaten);
+      const r = belegHinzufuegen(input, stand, schritt, await belegAuslesenLassen(file));
       if ("fehler" in r) {
         setMeldung({ text: r.fehler, fehler: true });
       } else if (frage.typ === "dokument") {
@@ -415,7 +410,7 @@ function Eingabe({
                 <li key={i}>
                   <span>📄 {b.text}</span>
                   <span>
-                    {b.betrag.toLocaleString("de-DE")} €
+                    {euro(b.betrag)}
                     <button
                       className="link danger"
                       aria-label="Beleg entfernen"
@@ -448,7 +443,7 @@ function Eingabe({
               />
             </div>
             <button type="submit" className="primary">
-              Weiter{summeBelege + zahl > 0 ? ` (${(summeBelege + zahl).toLocaleString("de-DE", { maximumFractionDigits: 2 })} €)` : ""}
+              Weiter{summeBelege + zahl > 0 ? ` (${euro(summeBelege + zahl)})` : ""}
             </button>
           </form>
         </>

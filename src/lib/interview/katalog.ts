@@ -7,6 +7,7 @@
  */
 import { applyPatch, type Patch } from "../assistant/patch";
 import { belegZuPatch } from "../assistant/beleg-mapping";
+import { LOHNAUSWEIS_CH, LOHNSTEUERBESCHEINIGUNG, personWerte, type BelegFeld } from "../tax/belegfelder";
 import { hochrechnen, sonderzahlungAufschlagen } from "../tax/hochrechnung";
 import { BUNDESLAENDER } from "../tax/params";
 import { KindSchema, type Person, type TaxInput } from "../tax/schema";
@@ -22,26 +23,17 @@ const du = (c: Ctx, duForm: string, andere: string) => (c.p === 0 ? duForm : and
 const setP = (c: Ctx, felder: Partial<Person>): TaxInput => applyPatch(c.input, { personen: [{ index: c.p, felder }] });
 const setH = (c: Ctx, allgemein: NonNullable<Patch["allgemein"]>): TaxInput => applyPatch(c.input, { allgemein });
 /** Antwort zur selben Person / zum selben Kind (oder global) lesen. */
-export const antwort = (c: Ctx, id: string): unknown =>
+const antwort = (c: Ctx, id: string): unknown =>
   (c.antworten[`${id}@p${c.p}`] ?? c.antworten[`${id}@k${c.k}`] ?? c.antworten[id])?.wert;
 const istGrenzgaenger = (c: Ctx) => person(c).arbeitsland === "CH";
 const hatLohn = (c: Ctx) =>
   istGrenzgaenger(c)
     ? person(c).chBruttolohn > 0 || antwort(c, "lohnausweis_ch") !== undefined
     : antwort(c, "lohn_quelle") !== "keiner" && (person(c).bruttolohn > 0 || antwort(c, "lohn_quelle") !== undefined);
-const eur = (n: number) => `${n.toLocaleString("de-DE", { maximumFractionDigits: 2 })} €`;
 
-const LSTB_FELDER = [
-  { key: "bruttolohn", label: "Bruttoarbeitslohn (Zeile 3)", einheit: "€" },
-  { key: "lohnsteuer", label: "Lohnsteuer (Zeile 4)", einheit: "€" },
-  { key: "soliEinbehalten", label: "Solidaritätszuschlag (Zeile 5)", einheit: "€" },
-  { key: "kirchensteuerEinbehalten", label: "Kirchensteuer (Zeile 6/7)", einheit: "€" },
-  { key: "rvArbeitgeber", label: "Rente Arbeitgeber (Zeile 22a)", einheit: "€" },
-  { key: "rvArbeitnehmer", label: "Rente Arbeitnehmer (Zeile 23a)", einheit: "€" },
-  { key: "kvArbeitnehmer", label: "Krankenversicherung (Zeile 25)", einheit: "€" },
-  { key: "pvArbeitnehmer", label: "Pflegeversicherung (Zeile 26)", einheit: "€" },
-  { key: "avArbeitnehmer", label: "Arbeitslosenversicherung (Zeile 27)", einheit: "€" },
-];
+const alsFormularfelder = (felder: readonly BelegFeld[], einheit: string) =>
+  felder.map((f) => ({ key: f.feld, label: `${f.label} (${f.stelle})`, einheit }));
+const LSTB_FELDER = alsFormularfelder(LOHNSTEUERBESCHEINIGUNG, "€");
 
 const ABRECHNUNG_FELDER = [
   { key: "monat", label: "Abrechnungsmonat (1–12)", ganzzahl: true },
@@ -142,18 +134,8 @@ export const KATALOG: Frage[] = [
     text: (c) => du(c, "Dann brauche ich deinen Schweizer Lohnausweis. Foto hochladen oder die Ziffern abtippen (in CHF):", "Dann den Schweizer Lohnausweis von {name}, bitte (in CHF):"),
     erklaerung: "Den Lohnausweis bekommst du Anfang des Jahres vom Arbeitgeber. Wichtig sind Ziffer 8 (Bruttolohn), 9 (AHV/IV/EO/ALV/NBUV), 10 (Pensionskasse) und 12 (Quellensteuer).",
     belegHinweis: "Lohnausweis",
-    felder: [
-      { key: "chBruttolohn", label: "Bruttolohn (Ziffer 8)", einheit: "CHF" },
-      { key: "chZiffer9", label: "AHV/IV/EO/ALV/NBUV (Ziffer 9)", einheit: "CHF" },
-      { key: "chBvg", label: "Pensionskasse (Ziffer 10)", einheit: "CHF" },
-      { key: "chQuellensteuer", label: "Quellensteuer (Ziffer 12)", einheit: "CHF" },
-    ],
-    aktuell: (c) => ({
-      chBruttolohn: person(c).chBruttolohn,
-      chZiffer9: person(c).chZiffer9,
-      chBvg: person(c).chBvg,
-      chQuellensteuer: person(c).chQuellensteuer,
-    }),
+    felder: alsFormularfelder(LOHNAUSWEIS_CH, "CHF"),
+    aktuell: (c) => personWerte(LOHNAUSWEIS_CH, person(c)),
     manuellAnwenden: (w, c) => setP(c, { ...w, arbeitsland: "CH" }),
     belegAnwenden: (b, c) => {
       if (b.belegart !== "lohnausweis_ch") return null;
@@ -263,7 +245,7 @@ export const KATALOG: Frage[] = [
     text: (c) => du(c, "Super! Fotografiere die Lohnsteuerbescheinigung oder tippe die Werte ab.", "Dann die Lohnsteuerbescheinigung von {name}, bitte."),
     belegHinweis: "Lohnsteuerbescheinigung",
     felder: LSTB_FELDER,
-    aktuell: (c) => Object.fromEntries(LSTB_FELDER.map((f) => [f.key, person(c)[f.key as keyof Person] as number])),
+    aktuell: (c) => personWerte(LOHNSTEUERBESCHEINIGUNG, person(c)),
     manuellAnwenden: (werte, c) => setP(c, { ...werte, kirchenmitglied: person(c).kirchenmitglied || (werte.kirchensteuerEinbehalten ?? 0) > 0 }),
     belegAnwenden: (b, c) => {
       if (b.belegart !== "lohnsteuerbescheinigung") return null;
@@ -709,4 +691,3 @@ export const KATALOG: Frage[] = [
   },
 ];
 
-export { eur as formatEuro };

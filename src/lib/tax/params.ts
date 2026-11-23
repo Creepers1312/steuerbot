@@ -7,7 +7,6 @@
  */
 
 export type SupportedYear = 2025 | 2026;
-export const SUPPORTED_YEARS: SupportedYear[] = [2025, 2026];
 
 export interface TariffZones {
   /** Grundfreibetrag (Zone 1 endet hier) */

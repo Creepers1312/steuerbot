@@ -1,7 +1,7 @@
 import type { TaxResult } from "./engine";
 import type { TaxInput } from "./schema";
+import { euro, franken } from "../format";
 
-const eur = (n: number) => `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
 export interface Eintrag {
   feld: string;
@@ -31,13 +31,12 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
 
   personen.forEach((p, i) => {
     const name = p.name || `Person ${i + 1}`;
-    const chf = (n: number) => `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF`;
     if (p.arbeitsland === "CH") {
       abschnitte.push({
         anlage: `Anlage N-Gre – ${name}`,
         eintraege: [
-          { feld: "Arbeitslohn laut Lohnausweis (Ziffer 8)", wert: chf(p.chBruttolohn), hinweis: "In Franken eintragen – das Finanzamt rechnet um." },
-          { feld: "Einbehaltene Schweizer Abzugsteuer (Ziffer 12)", wert: chf(p.chQuellensteuer), hinweis: "Wird bis 4,5 % des Bruttolohns angerechnet." },
+          { feld: "Arbeitslohn laut Lohnausweis (Ziffer 8)", wert: franken(p.chBruttolohn), hinweis: "In Franken eintragen – das Finanzamt rechnet um." },
+          { feld: "Einbehaltene Schweizer Abzugsteuer (Ziffer 12)", wert: franken(p.chQuellensteuer), hinweis: "Wird bis 4,5 % des Bruttolohns angerechnet." },
           { feld: "Nichtrückkehrtage", wert: `${p.nichtrueckkehrtage}`, hinweis: "Bei mehr als 60 Tagen keine Grenzgängerregel." },
           { feld: "Belege", wert: "Lohnausweis, ggf. Ansässigkeitsbescheinigung (Gre-1)", hinweis: "Lohnausweis als PDF beifügen bzw. bereithalten." },
         ],
@@ -45,14 +44,14 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
       abschnitte.push({
         anlage: `Anlage Vorsorgeaufwand – ${name} (Schweiz)`,
         eintraege: [
-          { feld: "Beiträge zur Schweizer AHV/IV/EO", wert: chf(Math.min(p.chZiffer9, p.chBruttolohn * 0.053)), hinweis: "Arbeitnehmeranteil; Arbeitgeberanteil in gleicher Höhe (steuerfrei)." },
-          { feld: "Pensionskasse – obligatorischer Teil", wert: chf(Math.max(0, p.chBvg - p.chBvgUeberobligatorisch)) },
-          ...(p.chBvgUeberobligatorisch > 0 ? [{ feld: "Pensionskasse – überobligatorischer Teil", wert: chf(p.chBvgUeberobligatorisch) }] : []),
-          { feld: "Arbeitslosen- und Nichtberufsunfallversicherung", wert: chf(Math.max(0, p.chZiffer9 - Math.min(p.chZiffer9, p.chBruttolohn * 0.053))) },
+          { feld: "Beiträge zur Schweizer AHV/IV/EO", wert: franken(Math.min(p.chZiffer9, p.chBruttolohn * 0.053)), hinweis: "Arbeitnehmeranteil; Arbeitgeberanteil in gleicher Höhe (steuerfrei)." },
+          { feld: "Pensionskasse – obligatorischer Teil", wert: franken(Math.max(0, p.chBvg - p.chBvgUeberobligatorisch)) },
+          ...(p.chBvgUeberobligatorisch > 0 ? [{ feld: "Pensionskasse – überobligatorischer Teil", wert: franken(p.chBvgUeberobligatorisch) }] : []),
+          { feld: "Arbeitslosen- und Nichtberufsunfallversicherung", wert: franken(Math.max(0, p.chZiffer9 - Math.min(p.chZiffer9, p.chBruttolohn * 0.053))) },
           ...(p.kvArbeitnehmer || p.pvArbeitnehmer
-            ? [{ feld: "Kranken-/Pflegeversicherung (selbst gezahlt, ohne Arbeitgeberzuschuss)", wert: eur(p.kvArbeitnehmer + p.pvArbeitnehmer) }]
+            ? [{ feld: "Kranken-/Pflegeversicherung (selbst gezahlt, ohne Arbeitgeberzuschuss)", wert: euro(p.kvArbeitnehmer + p.pvArbeitnehmer, 2) }]
             : []),
-          ...(p.chKvgPraemie ? [{ feld: "Schweizer Krankenversicherung (KVG)", wert: chf(p.chKvgPraemie) }] : []),
+          ...(p.chKvgPraemie ? [{ feld: "Schweizer Krankenversicherung (KVG)", wert: franken(p.chKvgPraemie) }] : []),
         ],
       });
     }
@@ -62,7 +61,7 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
         : [
             {
               feld: "Angaben aus der Lohnsteuerbescheinigung",
-              wert: `Brutto ${eur(p.bruttolohn)}, Lohnsteuer ${eur(p.lohnsteuer)}`,
+              wert: `Brutto ${euro(p.bruttolohn, 2)}, Lohnsteuer ${euro(p.lohnsteuer, 2)}`,
               hinweis: "Werden per Belegabruf automatisch übernommen – nur prüfen.",
             },
           ];
@@ -76,15 +75,15 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
     if (p.homeofficeTage > 0) {
       e.push({ feld: "Tagespauschale (Homeoffice)", wert: `${Math.min(210, p.homeofficeTage)} Tage` });
     }
-    if (p.arbeitsmittel > 0) e.push({ feld: "Aufwendungen für Arbeitsmittel", wert: eur(p.arbeitsmittel), hinweis: "Einzeln mit Bezeichnung auflisten." });
-    if (p.gewerkschaftsbeitraege > 0) e.push({ feld: "Beiträge zu Berufsverbänden (Gewerkschaft)", wert: eur(p.gewerkschaftsbeitraege) });
-    if (p.fortbildung > 0) e.push({ feld: "Fortbildungskosten", wert: eur(p.fortbildung) });
-    if (p.kontofuehrungspauschale) e.push({ feld: "Weitere Werbungskosten: Kontoführungsgebühren (pauschal)", wert: eur(16) });
-    if (p.sonstigeWerbungskosten > 0) e.push({ feld: "Weitere Werbungskosten", wert: eur(p.sonstigeWerbungskosten), hinweis: "Mit kurzer Beschreibung (z. B. Bewerbung, Umzug)." });
+    if (p.arbeitsmittel > 0) e.push({ feld: "Aufwendungen für Arbeitsmittel", wert: euro(p.arbeitsmittel, 2), hinweis: "Einzeln mit Bezeichnung auflisten." });
+    if (p.gewerkschaftsbeitraege > 0) e.push({ feld: "Beiträge zu Berufsverbänden (Gewerkschaft)", wert: euro(p.gewerkschaftsbeitraege, 2) });
+    if (p.fortbildung > 0) e.push({ feld: "Fortbildungskosten", wert: euro(p.fortbildung, 2) });
+    if (p.kontofuehrungspauschale) e.push({ feld: "Weitere Werbungskosten: Kontoführungsgebühren (pauschal)", wert: euro(16, 2) });
+    if (p.sonstigeWerbungskosten > 0) e.push({ feld: "Weitere Werbungskosten", wert: euro(p.sonstigeWerbungskosten, 2), hinweis: "Mit kurzer Beschreibung (z. B. Bewerbung, Umzug)." });
     if (p.lohnersatzleistungen > 0) {
       e.push({
         feld: "Lohn-/Entgeltersatzleistungen (Elterngeld, ALG I, Kurzarbeitergeld …)",
-        wert: eur(p.lohnersatzleistungen),
+        wert: euro(p.lohnersatzleistungen, 2),
         hinweis: "Teilweise per Belegabruf vorhanden – Elterngeld meist selbst eintragen.",
       });
     }
@@ -120,15 +119,15 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
     eintraege: [
       {
         feld: "Renten-, Kranken-, Pflege-, Arbeitslosenversicherung",
-        wert: `wird abgezogen: ${eur(r.vorsorgeaufwendungen)}`,
+        wert: `wird abgezogen: ${euro(r.vorsorgeaufwendungen, 2)}`,
         hinweis: "Kommt aus der Lohnsteuerbescheinigung per Belegabruf.",
       },
     ],
   });
 
   const sa: Eintrag[] = [];
-  if (input.spenden > 0) sa.push({ feld: "Zuwendungen (Spenden und Mitgliedsbeiträge)", wert: eur(input.spenden), hinweis: "Bis 300 € je Spende reicht der Kontoauszug." });
-  if (input.weitereKirchensteuer > 0) sa.push({ feld: "Gezahlte Kirchensteuer (nicht über den Lohn)", wert: eur(input.weitereKirchensteuer) });
+  if (input.spenden > 0) sa.push({ feld: "Zuwendungen (Spenden und Mitgliedsbeiträge)", wert: euro(input.spenden, 2), hinweis: "Bis 300 € je Spende reicht der Kontoauszug." });
+  if (input.weitereKirchensteuer > 0) sa.push({ feld: "Gezahlte Kirchensteuer (nicht über den Lohn)", wert: euro(input.weitereKirchensteuer, 2) });
   if (sa.length) abschnitte.push({ anlage: "Anlage Sonderausgaben", eintraege: sa });
 
   if (input.kinder.length) {
@@ -139,7 +138,7 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
       if (i === 0 && input.kinderbetreuungskosten > 0) {
         e.push({
           feld: "Kinderbetreuungskosten",
-          wert: eur(input.kinderbetreuungskosten),
+          wert: euro(input.kinderbetreuungskosten, 2),
           hinweis: "Je Kind getrennt angeben; ohne Verpflegung; nur per Überweisung bezahlt.",
         });
       }
@@ -151,9 +150,9 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
   }
 
   const hh: Eintrag[] = [];
-  if (input.haushaltsnaheDienstleistungen > 0) hh.push({ feld: "Haushaltsnahe Dienstleistungen", wert: eur(input.haushaltsnaheDienstleistungen) });
+  if (input.haushaltsnaheDienstleistungen > 0) hh.push({ feld: "Haushaltsnahe Dienstleistungen", wert: euro(input.haushaltsnaheDienstleistungen, 2) });
   if (input.handwerkerLohnkosten > 0) {
-    hh.push({ feld: "Handwerkerleistungen (nur Arbeitskosten)", wert: eur(input.handwerkerLohnkosten), hinweis: "Rechnung + Überweisung aufbewahren; Barzahlung zählt nicht." });
+    hh.push({ feld: "Handwerkerleistungen (nur Arbeitskosten)", wert: euro(input.handwerkerLohnkosten, 2), hinweis: "Rechnung + Überweisung aufbewahren; Barzahlung zählt nicht." });
   }
   if (hh.length) abschnitte.push({ anlage: "Anlage Haushaltsnahe Aufwendungen", eintraege: hh });
 
@@ -163,8 +162,8 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
       eintraege: [
         {
           feld: "Krankheitskosten",
-          wert: eur(input.krankheitskosten),
-          hinweis: r.aussergewoehnlicheBelastungen > 0 ? undefined : `Liegt unter der zumutbaren Belastung (${eur(r.zumutbareBelastung)}) – wirkt sich voraussichtlich nicht aus.`,
+          wert: euro(input.krankheitskosten, 2),
+          hinweis: r.aussergewoehnlicheBelastungen > 0 ? undefined : `Liegt unter der zumutbaren Belastung (${euro(r.zumutbareBelastung, 2)}) – wirkt sich voraussichtlich nicht aus.`,
         },
       ],
     });

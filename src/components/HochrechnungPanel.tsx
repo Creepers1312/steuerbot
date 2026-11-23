@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { SupportedYear } from "@/lib/tax/params";
 import { hochrechnen, type Gehaltsabrechnung, type HochgerechneteWerte } from "@/lib/tax/hochrechnung";
 import { NumField } from "./NumField";
+import { euro } from "@/lib/format";
 
 const LEER: Gehaltsabrechnung = {
   modus: "monat",
@@ -88,8 +89,8 @@ export default function HochrechnungPanel({
       </div>
       {vorschau && (
         <p style={{ margin: "8px 0 0" }}>
-          Hochgerechnet aufs Jahr: Brutto <strong>{vorschau.bruttolohn.toLocaleString("de-DE")} €</strong>, Lohnsteuer{" "}
-          <strong>{vorschau.lohnsteuer.toLocaleString("de-DE")} €</strong>
+          Hochgerechnet aufs Jahr: Brutto <strong>{euro(vorschau.bruttolohn, 0)}</strong>, Lohnsteuer{" "}
+          <strong>{euro(vorschau.lohnsteuer, 0)}</strong>
         </p>
       )}
       <div className="row end" style={{ marginTop: 8 }}>
