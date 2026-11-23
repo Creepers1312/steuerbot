@@ -25,7 +25,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run lint && npx tsc --noEmit && npm test && npm run build
+RUN npm run check && npm run build
 
 # Laufzeit-Image per Digest festgenagelt – Dependabot schlägt Aktualisierungen vor
 FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:f991e86a080567b6ab7c3392e36f7a0a4f9300639e526b48ee81b92d523af62e AS runtime

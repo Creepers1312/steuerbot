@@ -61,7 +61,7 @@ npm run dev                   # http://localhost:3000
 
 Der Rechner funktioniert auch ohne API-Schlüssel – nur Chat und Belegerkennung brauchen ihn.
 
-Tests: `npm test` (laufen auch automatisch auf GitHub bei jedem Push). Die Tarifwerte sind mit veröffentlichten
+Prüfen: `npm run check` (Lint, Typprüfung, Tests – läuft auch automatisch auf GitHub und im Docker-Build). Die Tarifwerte sind mit veröffentlichten
 Einkommensteuertabellen abgeglichen.
 
 ### Auf einem eigenen Server betreiben (Docker, empfohlen)
@@ -152,7 +152,9 @@ Abgabe erfolgt weiterhin über [Mein ELSTER](https://www.elster.de).
 ## Aufbau
 
 ```
-src/lib/tax/          Rechenkern (params, tariff, engine, schema, hochrechnung, ausfuellhilfe) + Tests
+src/lib/tax/          Rechenkern (params, tariff, engine, schema, belegfelder, hochrechnung, ausfuellhilfe) + Tests
+src/lib/format.ts     Zahlen und Beträge deutsch lesen/ausgeben
+src/lib/useHaushalte.ts  Haushalte im Browser (Zustand, Speichern, Import/Export)
 src/lib/interview/    Fragebogen: Fragenkatalog (katalog.ts) und Ablauf + Tests
 src/lib/assistant/    Claude-Anbindung: Werkzeug-Schleife, Belegerkennung, Änderungs-Patches
 src/app/api/chat      Chat-Endpunkt (Messages API + Werkzeuge, Streaming per Server-Sent Events)

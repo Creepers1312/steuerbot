@@ -1,13 +1,17 @@
 {
   "name": "steuerbot",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "test:watch": "vitest",
+    "passwort-hash": "node scripts/passwort-hash.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.12.0",
@@ -29,5 +33,9 @@
   },
   "overrides": {
     "postcss": "8.5.33"
+  },
+  "description": "Steuererstattung schätzen – Fragebogen, Rechner und KI-Assistent für Arbeitnehmer und Grenzgänger (Familienbetrieb)",
+  "engines": {
+    "node": ">=22"
   }
 }

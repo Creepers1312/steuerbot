@@ -6,7 +6,7 @@ import { parseTaxInput } from "@/lib/tax/schema";
 import { groesseOk, rateLimit } from "@/lib/sicherheit/anfrage";
 
 export const runtime = "nodejs";
-// Vercel Hobby erlaubt bis zu 60 s pro Anfrage; bei Pro kann der Wert erhöht werden
+// Obergrenze für eine Antwort inkl. Werkzeugaufrufen (bei Hosting-Plattformen mit Zeitlimit relevant)
 export const maxDuration = 60;
 
 const BodySchema = z.object({
