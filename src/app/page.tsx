@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Chat, { type ChatEintrag } from "@/components/Chat";
 import DatenFormular from "@/components/DatenFormular";
+import ElsterHilfe from "@/components/ElsterHilfe";
 import { ErgebnisDetails, ErgebnisHero } from "@/components/Ergebnis";
 import { berechne } from "@/lib/tax/engine";
 import { defaultInput, parseTaxInput, type TaxInput } from "@/lib/tax/schema";
@@ -35,6 +36,7 @@ function laden(): Haushalt[] {
 export default function Home() {
   const [haushalte, setHaushalte] = useState<Haushalt[] | null>(null);
   const [aktivId, setAktivId] = useState<string>("");
+  const [ansicht, setAnsicht] = useState<"rechner" | "elster">("rechner");
 
   useEffect(() => {
     const list = laden();
@@ -97,7 +99,7 @@ export default function Home() {
 
   return (
     <div className="shell">
-      <header className="header">
+      <header className="header no-print">
         <div>
           <h1>Steuerbot</h1>
           <p>Voraussichtliche Steuererstattung für Arbeitnehmer – mit KI-Assistent</p>
@@ -124,11 +126,25 @@ export default function Home() {
 
       <div className="layout">
         <main>
-          <ErgebnisHero r={ergebnis} />
-          <DatenFormular input={aktiv.input} onChange={(input) => aendern({ input })} />
-          <ErgebnisDetails r={ergebnis} />
+          <div className="tabs no-print">
+            <button className={`tab ${ansicht === "rechner" ? "active" : ""}`} onClick={() => setAnsicht("rechner")}>
+              Rechner
+            </button>
+            <button className={`tab ${ansicht === "elster" ? "active" : ""}`} onClick={() => setAnsicht("elster")}>
+              Ausfüllhilfe für ELSTER
+            </button>
+          </div>
+          {ansicht === "rechner" ? (
+            <>
+              <ErgebnisHero r={ergebnis} />
+              <DatenFormular input={aktiv.input} onChange={(input) => aendern({ input })} />
+              <ErgebnisDetails r={ergebnis} />
+            </>
+          ) : (
+            <ElsterHilfe input={aktiv.input} r={ergebnis} />
+          )}
         </main>
-        <aside>
+        <aside className="no-print">
           <Chat
             input={aktiv.input}
             onInputChange={(input) => aendern({ input })}
@@ -138,7 +154,8 @@ export default function Home() {
           />
         </aside>
       </div>
-      <p className="disclaimer">
+      <a href="#assistent" className="fab no-print">💬 Assistent</a>
+      <p className="disclaimer no-print">
         Deine Daten bleiben in diesem Browser. Nur Chat-Nachrichten, der Datenstand und hochgeladene Belege werden zur
         Auswertung an die Claude-API (Anthropic) gesendet.
       </p>

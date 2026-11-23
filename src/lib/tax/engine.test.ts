@@ -18,6 +18,17 @@ describe("Grundtarif § 32a EStG", () => {
     expect(grundtarif(40_000, t25)).toBe(7_320);
   });
 
+  // Abgleich mit veröffentlichten Einkommensteuertabellen (lohn-info.de, finanztip.de, steuerschroeder.de)
+  it.each([
+    [2025, 30_000, false, 4_303],
+    [2025, 50_000, false, 10_691],
+    [2025, 30_000, true, 970],
+    [2026, 50_000, false, 10_548],
+  ])("Tabellenwert %i: zvE %i € (Splitting: %s) → %i €", (jahr, zvE, splitting, erwartet) => {
+    const t = PARAMS[jahr as 2025 | 2026].tariff;
+    expect(splitting ? splittingtarif(zvE, t) : grundtarif(zvE, t)).toBe(erwartet);
+  });
+
   it("ist an allen Zonengrenzen stetig (Sprung < 2 €)", () => {
     for (const t of [t25, t26]) {
       for (const g of [t.grundfreibetrag, t.zone2End, t.zone3End, t.zone4End]) {

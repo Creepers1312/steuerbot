@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { berechne, type TaxResult } from "../tax/engine";
 import type { TaxInput } from "../tax/schema";
+import { GehaltsabrechnungSchema, hochrechnen } from "../tax/hochrechnung";
 import { PatchSchema, applyPatch, compactInput } from "./patch";
 
 export const MODEL = process.env.STEUERBOT_MODEL ?? "claude-opus-5-5";
@@ -24,6 +25,7 @@ Deine Aufgabe:
 - Nutze \`was_waere_wenn\`, um zu zeigen, wie viel ein möglicher Abzug bringen würde, bevor du danach fragst (z. B. „Wenn du einen Laptop für 1.000 € gekauft hast, bringt das etwa X €“).
 - Weise auf typische vergessene Posten hin, aber nur, wenn sie zur Situation passen.
 - Wenn Werbungskosten unter dem Arbeitnehmer-Pauschbetrag liegen, erkläre, dass kleine Belege dann nichts bringen.
+- Für das laufende Jahr gibt es meist noch keine Lohnsteuerbescheinigung (sie kommt im Februar des Folgejahres). Frag dann nach der letzten Gehaltsabrechnung – am besten nach den Jahressummen bis zum Abrechnungsmonat – und nutze \`gehaltsabrechnung_hochrechnen\`. Frag auch nach noch ausstehendem Weihnachtsgeld oder Bonus.
 
 Grenzen:
 - Du bist keine Steuerberatung. Bei Selbstständigkeit, Vermietung, Kapitalerträgen über dem Sparerpauschbetrag, Auslandseinkünften, Trennung/Scheidung oder Unterhalt empfiehl eine Steuerberatung oder einen Lohnsteuerhilfeverein; diese Fälle rechnet die App nicht.
@@ -34,8 +36,16 @@ Antworte knapp (meist 2–6 Sätze), mit Euro-Beträgen im Format 1.234 €. Kei
 
 const patchJsonSchema = z.toJSONSchema(PatchSchema, { io: "input", unrepresentable: "any" }) as Record<string, unknown>;
 delete patchJsonSchema.$schema;
+const hochrechnungJsonSchema = z.toJSONSchema(
+  z.object({
+    personIndex: z.number().int().min(0).max(1).describe("0 = erste Person, 1 = Ehepartner:in"),
+    abrechnung: GehaltsabrechnungSchema,
+  }),
+  { io: "input" },
+) as Record<string, unknown>;
+delete hochrechnungJsonSchema.$schema;
 
-const TOOLS: Anthropic.Beta.BetaTool[] = [
+const TOOLS: Anthropic.Beta.BetaTool[] = ([
   {
     name: "daten_aktualisieren",
     description:
@@ -49,12 +59,18 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
     input_schema: patchJsonSchema as Anthropic.Beta.BetaTool.InputSchema,
   },
   {
+    name: "gehaltsabrechnung_hochrechnen",
+    description:
+      "Für das laufende Jahr ohne Lohnsteuerbescheinigung: rechnet Werte einer Gehaltsabrechnung (Monatswerte oder Jahressummen bis zum Abrechnungsmonat) auf das ganze Jahr hoch und speichert sie bei der angegebenen Person. Liefert die neue Schätzung.",
+    input_schema: hochrechnungJsonSchema as Anthropic.Beta.BetaTool.InputSchema,
+  },
+  {
     name: "berechnung_anzeigen",
     description:
       "Liefert den aktuellen Datenstand und die vollständige Berechnung (Einkünfte, Werbungskosten, Sonderausgaben, zu versteuerndes Einkommen, Steuer, Erstattung, Hinweise).",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
-];
+] satisfies Anthropic.Beta.BetaTool[]).map((t) => ({ ...t, eager_input_streaming: true }));
 
 export function resultSummary(r: TaxResult) {
   return {
@@ -80,10 +96,36 @@ interface ToolOutcome {
   newInput?: TaxInput;
 }
 
+const HochrechnungToolSchema = z.object({
+  personIndex: z.number().int().min(0).max(1),
+  abrechnung: GehaltsabrechnungSchema,
+});
+
 function runTool(name: string, rawInput: unknown, input: TaxInput): ToolOutcome {
   try {
     if (name === "berechnung_anzeigen") {
       return { content: JSON.stringify({ datenstand: compactInput(input), berechnung: berechne(input) }) };
+    }
+    if (name === "gehaltsabrechnung_hochrechnen") {
+      const parsed = HochrechnungToolSchema.safeParse(rawInput);
+      if (!parsed.success) return { content: `Ungültige Eingabe: ${z.prettifyError(parsed.error)}`, isError: true };
+      const werte = hochrechnen(parsed.data.abrechnung, input.jahr);
+      const vorher = berechne(input).erstattung;
+      const next = applyPatch(input, {
+        personen: [
+          { index: parsed.data.personIndex, felder: { ...werte, ...(werte.kirchensteuerEinbehalten > 0 ? { kirchenmitglied: true } : {}) } },
+        ],
+      });
+      const nachher = berechne(next);
+      return {
+        content: JSON.stringify({
+          gespeichert: true,
+          hochgerechneteJahreswerte: werte,
+          ...resultSummary(nachher),
+          differenzZuVorher: Math.round((nachher.erstattung - vorher) * 100) / 100,
+        }),
+        newInput: next,
+      };
     }
     if (name === "daten_aktualisieren" || name === "was_waere_wenn") {
       const parsed = PatchSchema.safeParse(rawInput);
@@ -113,24 +155,32 @@ function runTool(name: string, rawInput: unknown, input: TaxInput): ToolOutcome 
   }
 }
 
-export interface ChatTurnResult {
-  messages: Anthropic.Beta.BetaMessageParam[];
-  input: TaxInput;
-  reply: string;
-  changed: boolean;
-}
+export type ChatEvent =
+  | { type: "text"; delta: string }
+  | { type: "status"; text: string }
+  | { type: "input"; input: TaxInput }
+  | { type: "done"; messages: Anthropic.Beta.BetaMessageParam[]; reply: string }
+  | { type: "error"; error: string };
+
+const TOOL_STATUS: Record<string, string> = {
+  daten_aktualisieren: "trägt ein …",
+  was_waere_wenn: "rechnet durch …",
+  berechnung_anzeigen: "schaut in die Berechnung …",
+  gehaltsabrechnung_hochrechnen: "rechnet aufs Jahr hoch …",
+};
 
 /**
- * Ein Gesprächszug: Nutzer-Nachricht anhängen, Werkzeug-Schleife ausführen,
- * aktualisierten Verlauf + Datenstand zurückgeben.
+ * Ein Gesprächszug mit Streaming: Text-Häppchen, Datenstand-Änderungen und am Ende
+ * der vollständige Verlauf (inkl. Thinking-Blöcke) werden als Ereignisse gemeldet.
  */
 export async function chatTurn(
   history: Anthropic.Beta.BetaMessageParam[],
   userText: string,
   startInput: TaxInput,
-): Promise<ChatTurnResult> {
+  emit: (e: ChatEvent) => void,
+): Promise<void> {
   let input = startInput;
-  let changed = false;
+  const heute = new Date().toLocaleDateString("de-DE", { day: "numeric", month: "long", year: "numeric" });
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     ...history,
     {
@@ -139,7 +189,7 @@ export async function chatTurn(
         { type: "text", text: userText },
         {
           type: "text",
-          text: `<aktueller_datenstand>\n${JSON.stringify(compactInput(input))}\n</aktueller_datenstand>\n<aktuelle_schaetzung>\n${JSON.stringify(resultSummary(berechne(input)))}\n</aktuelle_schaetzung>`,
+          text: `<kontext>Heute ist der ${heute}.</kontext>\n<aktueller_datenstand>\n${JSON.stringify(compactInput(input))}\n</aktueller_datenstand>\n<aktuelle_schaetzung>\n${JSON.stringify(resultSummary(berechne(input)))}\n</aktuelle_schaetzung>`,
         },
       ],
     },
@@ -147,9 +197,9 @@ export async function chatTurn(
 
   const replyParts: string[] = [];
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await getClient().beta.messages.create({
+    const stream = getClient().beta.messages.stream({
       model: MODEL,
-      max_tokens: 16_000,
+      max_tokens: 32_000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       output_config: { effort: "medium" },
@@ -159,19 +209,38 @@ export async function chatTurn(
       messages,
     });
 
+    let textInRound = "";
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        if (!textInRound && replyParts.length) emit({ type: "text", delta: "\n\n" });
+        textInRound += event.delta.text;
+        emit({ type: "text", delta: event.delta.text });
+      } else if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
+        emit({ type: "status", text: TOOL_STATUS[event.content_block.name] ?? "arbeitet …" });
+      }
+    }
+    const response = await stream.finalMessage();
+    if (textInRound.trim()) replyParts.push(textInRound.trim());
+
     if (response.stop_reason === "refusal") {
-      replyParts.push("Dazu kann ich leider nichts sagen. Formuliere die Frage gern anders.");
-      // Abgelehnte Antwort nicht in den Verlauf übernehmen
-      break;
+      const hinweis = "Dazu kann ich leider nichts sagen. Formuliere die Frage gern anders.";
+      emit({ type: "text", delta: (textInRound ? "\n\n" : "") + hinweis });
+      replyParts.push(hinweis);
+      break; // abgelehnte Antwort nicht in den Verlauf übernehmen
     }
 
     // Vollständigen Inhalt (inkl. Thinking-Blöcke) übernehmen
     messages.push({ role: "assistant", content: response.content });
-    for (const block of response.content) {
-      if (block.type === "text" && block.text.trim()) replyParts.push(block.text.trim());
-    }
 
     if (response.stop_reason === "pause_turn") continue;
+    if (response.stop_reason === "max_tokens") {
+      const hinweis = "(Antwort wurde abgeschnitten – frag gern nach.)";
+      emit({ type: "text", delta: "\n\n" + hinweis });
+      replyParts.push(hinweis);
+      // Unvollständige Werkzeugaufrufe nicht ausführen
+      if (response.content.some((b) => b.type === "tool_use")) messages.pop();
+      break;
+    }
     if (response.stop_reason !== "tool_use") break;
 
     const toolResults: Anthropic.Beta.BetaToolResultBlockParam[] = [];
@@ -180,14 +249,14 @@ export async function chatTurn(
       const out = runTool(block.name, block.input, input);
       if (out.newInput) {
         input = out.newInput;
-        changed = true;
+        emit({ type: "input", input });
       }
       toolResults.push({ type: "tool_result", tool_use_id: block.id, content: out.content, is_error: out.isError });
     }
     messages.push({ role: "user", content: toolResults });
   }
 
-  return { messages, input, reply: replyParts.join("\n\n") || "…", changed };
+  emit({ type: "done", messages, reply: replyParts.join("\n\n") || "…" });
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +268,7 @@ const num = (beschreibung: string) => z.number().nullable().describe(beschreibun
 export const BelegSchema = z.object({
   belegart: z.enum([
     "lohnsteuerbescheinigung",
+    "gehaltsabrechnung",
     "handwerkerrechnung",
     "haushaltsnahe_dienstleistung",
     "spendenquittung",
@@ -225,6 +295,36 @@ export const BelegSchema = z.object({
       pvArbeitnehmer: num("Zeile 26"),
       avArbeitnehmer: num("Zeile 27"),
       lohnersatzleistungen: num("Zeile 15 Kurzarbeitergeld u. ä."),
+    })
+    .nullable(),
+  gehaltsabrechnung: z
+    .object({
+      monat: num("Abrechnungsmonat 1–12"),
+      monatswerte: z
+        .object({
+          brutto: num("Steuerbrutto des Monats"),
+          lohnsteuer: num("Lohnsteuer des Monats"),
+          soli: num("Solidaritätszuschlag des Monats"),
+          kirchensteuer: num("Kirchensteuer des Monats"),
+          rv: num("Rentenversicherung Arbeitnehmeranteil des Monats"),
+          kv: num("Krankenversicherung Arbeitnehmeranteil des Monats"),
+          pv: num("Pflegeversicherung Arbeitnehmeranteil des Monats"),
+          av: num("Arbeitslosenversicherung Arbeitnehmeranteil des Monats"),
+        })
+        .nullable(),
+      jahressummen: z
+        .object({
+          brutto: num("Steuerbrutto kumuliert seit Januar"),
+          lohnsteuer: num("Lohnsteuer kumuliert"),
+          soli: num("Soli kumuliert"),
+          kirchensteuer: num("Kirchensteuer kumuliert"),
+          rv: num("RV-AN kumuliert"),
+          kv: num("KV-AN kumuliert"),
+          pv: num("PV-AN kumuliert"),
+          av: num("AV-AN kumuliert"),
+        })
+        .nullable()
+        .describe("Nur falls die Abrechnung Jahres-/kumulierte Summen ausweist"),
     })
     .nullable(),
   unsicherheiten: z.array(z.string()).describe("Werte, die schlecht lesbar oder mehrdeutig waren"),

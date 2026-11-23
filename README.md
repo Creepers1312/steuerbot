@@ -6,6 +6,8 @@ Gedacht für den privaten Gebrauch in der Familie.
 
 ![Screenshot](docs/screenshot.png)
 
+<img src="docs/mobile.png" width="260" alt="Handy-Ansicht"> <img src="docs/ausfuellhilfe.png" width="520" alt="Ausfüllhilfe">
+
 ## Was die App kann
 
 - **Erstattungsrechner** für 2025 und 2026 (Grund- und Splittingtarif nach § 32a EStG, Soli, Kirchensteuer)
@@ -18,14 +20,20 @@ Gedacht für den privaten Gebrauch in der Familie.
   - Progressionsvorbehalt (Elterngeld, ALG I, Kurzarbeitergeld)
   - Transparente Aufschlüsselung und Hinweise (z. B. „Werbungskosten unter Pauschbetrag“)
 - **KI-Assistent (Claude)**: Interview im Chat, trägt Angaben selbst ein, rechnet „Was wäre wenn“ durch
-- **Belege auslesen**: Foto oder PDF hochladen (Lohnsteuerbescheinigung, Handwerkerrechnung, Spendenquittung …), Werte
-  prüfen und übernehmen
+- **Belege auslesen**: Foto oder PDF hochladen (Lohnsteuerbescheinigung, Gehaltsabrechnung, Handwerkerrechnung,
+  Spendenquittung …), Werte prüfen und übernehmen
+- **Laufendes Jahr ohne Lohnsteuerbescheinigung**: Hochrechnung aus der Gehaltsabrechnung (Monatswerte × 12 oder
+  Jahressummen bis zum Abrechnungsmonat, plus erwartetes Weihnachtsgeld/Bonus)
+- **Ausfüllhilfe für Mein ELSTER**: welche Angabe in welche Anlage gehört – zum Ausdrucken oder als PDF
+- Antworten des Assistenten erscheinen live (Streaming); lange Gespräche werden automatisch neu begonnen, der
+  Datenstand bleibt erhalten
 - **Mehrere Haushalte** (z. B. für Eltern, Geschwister), gespeichert im Browser, Export/Import als Datei
 
 ## Wichtig: Rechnen tut nie die KI
 
 Die Steuerberechnung steckt im deterministischen Rechenkern (`src/lib/tax/`) und ist durch Tests abgesichert.
-Claude ruft ihn nur über Werkzeuge auf (`daten_aktualisieren`, `was_waere_wenn`, `berechnung_anzeigen`) und erklärt
+Claude ruft ihn nur über Werkzeuge auf (`daten_aktualisieren`, `was_waere_wenn`, `gehaltsabrechnung_hochrechnen`,
+`berechnung_anzeigen`) und erklärt
 das Ergebnis. So sind die Zahlen reproduzierbar und nicht „halluziniert“.
 
 ## Starten
@@ -40,12 +48,23 @@ npm run dev                   # http://localhost:3000
 
 Der Rechner funktioniert auch ohne API-Schlüssel – nur Chat und Belegerkennung brauchen ihn.
 
-Tests: `npm test`
+Tests: `npm test` (laufen auch automatisch auf GitHub bei jedem Push). Die Tarifwerte sind mit veröffentlichten
+Einkommensteuertabellen abgeglichen.
 
-### Für die Familie bereitstellen
+### Für die Familie bereitstellen (Vercel, kostenlos)
 
-Am einfachsten auf Vercel (oder einem eigenen Server mit `npm run build && npm start`). Dabei unbedingt
-`STEUERBOT_PASSWORT` setzen – sonst kann jeder mit dem Link über deinen API-Schlüssel chatten.
+1. Auf [vercel.com](https://vercel.com) mit GitHub anmelden → **Add New… → Project** → Repository `steuerbot`
+   importieren (Framework wird automatisch erkannt).
+2. Unter **Environment Variables** eintragen:
+   - `ANTHROPIC_API_KEY` – dein Claude-API-Schlüssel
+   - `STEUERBOT_PASSWORT` – **unbedingt setzen**, sonst kann jeder mit dem Link über deinen Schlüssel chatten
+3. **Deploy** klicken. Die Familie öffnet den Link und meldet sich mit beliebigem Benutzernamen + Passwort an.
+
+Hinweise: Im kostenlosen Hobby-Tarif darf eine Anfrage bis zu 60 Sekunden dauern (reicht für Chat und Belege).
+Jede Person speichert ihre Daten im eigenen Browser – zum Wechseln des Geräts „Sichern“/„Laden“ nutzen. Lege in der
+[Claude-Konsole](https://platform.claude.com) ein monatliches Ausgabenlimit fest.
+
+Alternativ auf einem eigenen Rechner/Server: `npm run build && npm start` (Port 3000).
 
 ## Kosten der Claude-Anbindung
 
@@ -80,9 +99,9 @@ Abgabe erfolgt weiterhin über [Mein ELSTER](https://www.elster.de).
 ## Aufbau
 
 ```
-src/lib/tax/          Rechenkern (params, tariff, engine, schema) + Tests
+src/lib/tax/          Rechenkern (params, tariff, engine, schema, hochrechnung, ausfuellhilfe) + Tests
 src/lib/assistant/    Claude-Anbindung: Werkzeug-Schleife, Belegerkennung, Änderungs-Patches
-src/app/api/chat      Chat-Endpunkt (Messages API + Werkzeuge)
+src/app/api/chat      Chat-Endpunkt (Messages API + Werkzeuge, Streaming per Server-Sent Events)
 src/app/api/beleg     Beleg-Endpunkt (strukturierte Ausgabe)
 src/components/       Formular, Ergebnis, Chat
 src/middleware.ts     Optionaler Passwortschutz

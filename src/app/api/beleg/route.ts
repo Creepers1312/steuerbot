@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { belegAuslesen } from "@/lib/assistant/claude";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 const ERLAUBT = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"] as const;
 type Erlaubt = (typeof ERLAUBT)[number];

@@ -1,11 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { chatTurn } from "@/lib/assistant/claude";
+import { chatTurn, type ChatEvent } from "@/lib/assistant/claude";
 import { parseTaxInput } from "@/lib/tax/schema";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// Vercel Hobby erlaubt bis zu 60 s pro Anfrage; bei Pro kann der Wert erhöht werden
+export const maxDuration = 60;
 
 const BodySchema = z.object({
   message: z.string().min(1).max(4_000),
@@ -24,12 +25,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Ungültiger Datenstand" }, { status: 400 });
   }
 
-  try {
-    const result = await chatTurn(body.data.history as Anthropic.Beta.BetaMessageParam[], body.data.message, input);
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json({ error: describeError(error) }, { status: 502 });
-  }
+  const history = body.data.history as Anthropic.Beta.BetaMessageParam[];
+  const message = body.data.message;
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (e: ChatEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+      try {
+        await chatTurn(history, message, input, emit);
+      } catch (error) {
+        emit({ type: "error", error: describeError(error) });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform" },
+  });
 }
 
 function describeError(error: unknown): string {

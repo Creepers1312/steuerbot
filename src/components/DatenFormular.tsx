@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { BUNDESLAENDER, type Bundesland } from "@/lib/tax/params";
+import { BUNDESLAENDER, type Bundesland, type SupportedYear } from "@/lib/tax/params";
+import HochrechnungPanel from "./HochrechnungPanel";
 import { KindSchema, PersonSchema, parseTaxInput, type Person, type TaxInput } from "@/lib/tax/schema";
 
 interface Props {
@@ -186,7 +187,7 @@ export default function DatenFormular({ input, onChange }: Props) {
   );
 }
 
-function PersonForm({ p, jahr, onChange }: { p: Person; jahr: number; onChange: (patch: Partial<Person>) => void }) {
+function PersonForm({ p, jahr, onChange }: { p: Person; jahr: SupportedYear; onChange: (patch: Partial<Person>) => void }) {
   return (
     <div>
       <div className="grid">
@@ -200,6 +201,7 @@ function PersonForm({ p, jahr, onChange }: { p: Person; jahr: number; onChange: 
       </div>
 
       <h3>Lohnsteuerbescheinigung</h3>
+      <HochrechnungPanel jahr={jahr} onUebernehmen={(werte) => onChange({ ...werte, kirchenmitglied: p.kirchenmitglied || werte.kirchensteuerEinbehalten > 0 })} />
       <div className="grid">
         <NumField label="Bruttoarbeitslohn – Zeile 3" value={p.bruttolohn} onChange={(v) => onChange({ bruttolohn: v })} />
         <NumField label="Lohnsteuer – Zeile 4" value={p.lohnsteuer} onChange={(v) => onChange({ lohnsteuer: v })} />

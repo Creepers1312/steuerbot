@@ -18,8 +18,35 @@ interface Props {
   onChatChange: (eintraege: ChatEintrag[], history: unknown[]) => void;
 }
 
+const MAX_VERLAUF_NACHRICHTEN = 80;
+const MAX_VERLAUF_ZEICHEN = 400_000;
+
+/** Minimales Markdown: **fett**, Aufzählungen mit „- “. */
+function MiniMarkdown({ text }: { text: string }) {
+  const inline = (zeile: string) =>
+    zeile.split(/(\*\*[^*]+\*\*)/g).map((teil, i) =>
+      teil.startsWith("**") && teil.endsWith("**") && teil.length > 4 ? <strong key={i}>{teil.slice(2, -2)}</strong> : teil,
+    );
+  return (
+    <>
+      {text.split("\n").map((zeile, i) =>
+        /^\s*[-•*] /.test(zeile) ? (
+          <div key={i} style={{ paddingLeft: 14, textIndent: -10 }}>
+            • {inline(zeile.replace(/^\s*[-•*] /, ""))}
+          </div>
+        ) : (
+          <div key={i} style={{ minHeight: zeile ? undefined : 8 }}>
+            {inline(zeile)}
+          </div>
+        ),
+      )}
+    </>
+  );
+}
+
 const VORSCHLAEGE = [
   "Lass uns mit meiner Lohnsteuerbescheinigung anfangen",
+  "Ich habe nur meine letzte Gehaltsabrechnung",
   "Was kann ich als Pendler absetzen?",
   "Was habe ich wahrscheinlich vergessen?",
   "Erklär mir, wie die Erstattung zustande kommt",
@@ -28,6 +55,8 @@ const VORSCHLAEGE = [
 export default function Chat({ input, onInputChange, eintraege, history, onChatChange }: Props) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [live, setLive] = useState("");
+  const [status, setStatus] = useState("");
   const [vorschlag, setVorschlag] = useState<{ text: string; patch: Patch | null; beleg: BelegDaten } | null>(null);
   const [belegPerson, setBelegPerson] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
@@ -35,29 +64,75 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
-  }, [eintraege, busy, vorschlag]);
+  }, [eintraege, busy, vorschlag, live]);
 
   async function senden(nachricht: string) {
     const msg = nachricht.trim();
     if (!msg || busy) return;
     setText("");
-    const mitUser: ChatEintrag[] = [...eintraege, { role: "user", text: msg }];
-    onChatChange(mitUser, history);
+
+    // Lange Gespräche werden teuer: Verlauf neu beginnen, der Datenstand geht mit jeder Nachricht mit.
+    let verlauf = history;
+    let basis = eintraege;
+    if (history.length > MAX_VERLAUF_NACHRICHTEN || JSON.stringify(history).length > MAX_VERLAUF_ZEICHEN) {
+      verlauf = [];
+      basis = [...eintraege, { role: "system", text: "Neues Gespräch begonnen – deine Angaben bleiben erhalten." }];
+    }
+    const mitUser: ChatEintrag[] = [...basis, { role: "user", text: msg }];
+    onChatChange(mitUser, verlauf);
     setBusy(true);
+    setLive("");
+    setStatus("denkt nach …");
+
+    let antwort = "";
+    let fertig = false;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, history, input }),
+        body: JSON.stringify({ message: msg, history: verlauf, input }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
-      if (data.changed) onInputChange(data.input);
-      onChatChange([...mitUser, { role: "assistant", text: data.reply }], data.messages);
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Fehler ${res.status}`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let puffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        puffer += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = puffer.indexOf("\n\n")) >= 0) {
+          const zeile = puffer.slice(0, idx).replace(/^data: /, "");
+          puffer = puffer.slice(idx + 2);
+          if (!zeile.trim()) continue;
+          const ev = JSON.parse(zeile);
+          if (ev.type === "text") {
+            antwort += ev.delta;
+            setLive(antwort);
+            setStatus("");
+          } else if (ev.type === "status") {
+            setStatus(ev.text);
+          } else if (ev.type === "input") {
+            onInputChange(ev.input);
+          } else if (ev.type === "done") {
+            fertig = true;
+            onChatChange([...mitUser, { role: "assistant", text: ev.reply }], ev.messages);
+          } else if (ev.type === "error") {
+            throw new Error(ev.error);
+          }
+        }
+      }
+      if (!fertig) throw new Error("Verbindung abgebrochen.");
     } catch (e) {
-      onChatChange([...mitUser, { role: "error", text: e instanceof Error ? e.message : String(e) }], history);
+      const fehler: ChatEintrag[] = antwort ? [{ role: "assistant", text: antwort }] : [];
+      onChatChange([...mitUser, ...fehler, { role: "error", text: e instanceof Error ? e.message : String(e) }], verlauf);
     } finally {
       setBusy(false);
+      setLive("");
+      setStatus("");
     }
   }
 
@@ -94,7 +169,7 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
   }
 
   return (
-    <div className="card chat">
+    <div className="card chat" id="assistent">
       <div className="chat-head">
         <h2>Steuer-Assistent</h2>
         <p>Erzähl einfach, was im Jahr los war – ich trage es ein und zeige, was es bringt.</p>
@@ -118,10 +193,15 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
         )}
         {eintraege.map((e, i) => (
           <div key={i} className={`msg ${e.role}`}>
-            {e.text}
+            {e.role === "assistant" ? <MiniMarkdown text={e.text} /> : e.text}
           </div>
         ))}
-        {busy && <div className="msg assistant muted">denkt nach …</div>}
+        {live && (
+          <div className="msg assistant">
+            <MiniMarkdown text={live} />
+          </div>
+        )}
+        {busy && status && <div className="msg assistant muted">{status}</div>}
         {vorschlag && (
           <div className="proposal">
             <strong>Beleg erkannt:</strong> {vorschlag.beleg.beschreibung}

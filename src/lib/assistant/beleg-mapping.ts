@@ -1,5 +1,6 @@
 import type { Patch } from "./patch";
 import type { TaxInput } from "../tax/schema";
+import { hochrechnen } from "../tax/hochrechnung";
 
 /** Auf der Client-Seite nutzbarer Typ (gleiche Struktur wie BelegSchema). */
 export interface BelegDaten {
@@ -9,6 +10,11 @@ export interface BelegDaten {
   betragGesamt: number | null;
   lohnkostenAnteil: number | null;
   lohnsteuerbescheinigung: Record<string, number | null> | null;
+  gehaltsabrechnung?: {
+    monat: number | null;
+    monatswerte: Record<string, number | null> | null;
+    jahressummen: Record<string, number | null> | null;
+  } | null;
   unsicherheiten: string[];
 }
 
@@ -51,6 +57,36 @@ export function belegZuPatch(b: BelegDaten, input: TaxInput, personIndex: number
       return {
         text: `Lohnsteuerbescheinigung: Brutto ${eur(l.bruttolohn ?? 0)}, Lohnsteuer ${eur(l.lohnsteuer ?? 0)} → ersetzt die Werte von ${p.name || "Person " + (personIndex + 1)}.`,
         patch: { personen: [{ index: personIndex, felder: { ...felder, ...(kist ? { kirchenmitglied: true } : {}) } }] },
+      };
+    }
+    case "gehaltsabrechnung": {
+      const g = b.gehaltsabrechnung;
+      const monat = Math.min(12, Math.max(1, Math.round(g?.monat ?? 12)));
+      const kumuliert = typeof g?.jahressummen?.brutto === "number" && g.jahressummen.brutto > 0;
+      const werte = kumuliert ? g!.jahressummen! : g?.monatswerte;
+      if (!werte || typeof werte.brutto !== "number") return { text: "Keine Werte erkannt.", patch: null };
+      const n = (k: string) => (typeof werte[k] === "number" ? (werte[k] as number) : 0);
+      const jahr = hochrechnen(
+        {
+          modus: kumuliert ? "kumuliert" : "monat",
+          monat,
+          brutto: n("brutto"),
+          lohnsteuer: n("lohnsteuer"),
+          soli: n("soli"),
+          kirchensteuer: n("kirchensteuer"),
+          rv: n("rv"),
+          kv: n("kv"),
+          pv: n("pv"),
+          av: n("av"),
+          einmalzahlungBrutto: 0,
+        },
+        input.jahr,
+      );
+      return {
+        text: `Gehaltsabrechnung (${kumuliert ? `Jahressummen bis Monat ${monat}` : "Monatswerte × 12"}): hochgerechnet Brutto ${eur(jahr.bruttolohn)}, Lohnsteuer ${eur(jahr.lohnsteuer)} → ersetzt die Werte von ${p.name || "Person " + (personIndex + 1)}. Weihnachtsgeld/Bonus, das noch kommt, bitte im Chat nennen.`,
+        patch: {
+          personen: [{ index: personIndex, felder: { ...jahr, ...(jahr.kirchensteuerEinbehalten > 0 ? { kirchenmitglied: true } : {}) } }],
+        },
       };
     }
     case "handwerkerrechnung": {
