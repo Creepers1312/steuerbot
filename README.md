@@ -38,6 +38,8 @@ Gedacht für den privaten Gebrauch in der Familie.
 - **Fürs Handy gemacht**: untere Navigation (Ergebnis · Angaben · Assistent · ELSTER), Erstattung immer oben
   sichtbar, aufklappbare Abschnitte, Beträge mit Komma, Beleg direkt mit der Kamera fotografieren, als App auf den
   Startbildschirm legbar („Zum Home-Bildschirm“)
+- **Sicherer Betrieb**: Anmeldung mit individuellen Konten, gehärteter Docker-Container, TLS-Proxy, Deploy- und
+  Update-Skript mit Rollback – orientiert an BSI IT-Grundschutz und TR-02102-2 (siehe [SECURITY.md](SECURITY.md))
 - **Mehrere Haushalte** (z. B. für Eltern, Geschwister), gespeichert im Browser, Export/Import als Datei
 
 ## Wichtig: Rechnen tut nie die KI
@@ -49,7 +51,7 @@ das Ergebnis. So sind die Zahlen reproduzierbar und nicht „halluziniert“.
 
 ## Starten
 
-Voraussetzung: Node.js 20+ und ein Claude-API-Schlüssel ([platform.claude.com](https://platform.claude.com)).
+Zum Ausprobieren auf dem eigenen Rechner (Entwicklungsmodus, ohne Anmeldung) – Voraussetzung: Node.js 20+.
 
 ```bash
 npm install
@@ -62,20 +64,44 @@ Der Rechner funktioniert auch ohne API-Schlüssel – nur Chat und Belegerkennun
 Tests: `npm test` (laufen auch automatisch auf GitHub bei jedem Push). Die Tarifwerte sind mit veröffentlichten
 Einkommensteuertabellen abgeglichen.
 
-### Für die Familie bereitstellen (Vercel, kostenlos)
+### Auf einem eigenen Server betreiben (Docker, empfohlen)
 
-1. Auf [vercel.com](https://vercel.com) mit GitHub anmelden → **Add New… → Project** → Repository `steuerbot`
-   importieren (Framework wird automatisch erkannt).
-2. Unter **Environment Variables** eintragen:
-   - `ANTHROPIC_API_KEY` – dein Claude-API-Schlüssel
-   - `STEUERBOT_PASSWORT` – **unbedingt setzen**, sonst kann jeder mit dem Link über deinen Schlüssel chatten
-3. **Deploy** klicken. Die Familie öffnet den Link und meldet sich mit beliebigem Benutzernamen + Passwort an.
+Voraussetzungen: Linux-Server oder Heimserver (z. B. Raspberry Pi 4/5, Mini-PC, VPS) mit Docker inkl. Compose-Plugin,
+git und openssl. Node.js wird auf dem Server **nicht** benötigt. Für eine öffentliche Domain muss sie per DNS auf den
+Server zeigen; die Ports 80 und 443 müssen erreichbar sein.
 
-Hinweise: Im kostenlosen Hobby-Tarif darf eine Anfrage bis zu 60 Sekunden dauern (reicht für Chat und Belege).
-Jede Person speichert ihre Daten im eigenen Browser – zum Wechseln des Geräts „Sichern“/„Laden“ nutzen. Lege in der
-[Claude-Konsole](https://platform.claude.com) ein monatliches Ausgabenlimit fest.
+```bash
+git clone https://github.com/Creepers1312/steuerbot.git /opt/steuerbot
+cd /opt/steuerbot
+scripts/deploy.sh            # fragt Domain, TLS (E-Mail oder "internal") und ersten Benutzer ab
+```
 
-Alternativ auf einem eigenen Rechner/Server: `npm run build && npm start` (Port 3000).
+Das Skript legt `.env` an (Rechte 600, zufälliger Sitzungsschlüssel), baut das Image (Tests laufen dabei mit),
+legt den ersten Benutzer an und startet App + TLS-Proxy. Danach:
+
+| Aufgabe | Befehl |
+|---|---|
+| Benutzer anlegen / Passwort ändern | `scripts/benutzer.sh ben` |
+| Benutzer entfernen | `scripts/benutzer.sh ben --entfernen` |
+| Aktualisieren (mit automatischem Rollback) | `scripts/update.sh` |
+| Nur Sicherheitsupdates der Basis-Images | `scripts/update.sh --nur-images` |
+| Wöchentlich automatisch aktualisieren | Cron: `17 4 * * 1 /opt/steuerbot/scripts/update.sh --ja` |
+| Status / Logs | `docker compose ps` · `docker compose logs -f app` |
+| Stoppen | `docker compose down` |
+
+**Heimnetz ohne öffentliche Domain:** `STEUERBOT_DOMAIN=steuerbot.local` (oder die IP) und `STEUERBOT_TLS=internal`.
+Caddy erstellt dann eigene Zertifikate; das Stammzertifikat einmal auf den Geräten installieren:
+`docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt > steuerbot-root.crt`.
+
+**Docker-Hub-Limits oder Firmen-Proxy:** in `.env` `BUILD_IMAGE`/`CADDY_IMAGE` auf einen Spiegel setzen bzw.
+`HTTPS_PROXY` und `NPM_CA_FILE` angeben (siehe `.env.example`).
+
+**Sicherung:** Steuerdaten liegen in den Browsern, nicht auf dem Server. Zu sichern sind nur `.env` und die
+Docker-Volumes `steuerbot_caddy_data`/`steuerbot_caddy_config` (Zertifikate).
+
+Details zu den Sicherheitsmaßnahmen und Restrisiken: [SECURITY.md](SECURITY.md).
+
+Lege in der [Claude-Konsole](https://platform.claude.com) ein monatliches Ausgabenlimit fest, wenn du die KI nutzt.
 
 ## Kosten der Claude-Anbindung
 
@@ -132,7 +158,11 @@ src/lib/assistant/    Claude-Anbindung: Werkzeug-Schleife, Belegerkennung, Ände
 src/app/api/chat      Chat-Endpunkt (Messages API + Werkzeuge, Streaming per Server-Sent Events)
 src/app/api/beleg     Beleg-Endpunkt (strukturierte Ausgabe)
 src/components/       Formular, Ergebnis, Chat
-src/middleware.ts     Optionaler Passwortschutz
+src/middleware.ts     Anmeldung, CSP-Nonce, CSRF-Schutz
+src/lib/sicherheit/   Sitzungen, Passwort-Hashes, Rate-Limits, Anfrageprüfung + Tests
+scripts/              deploy.sh, update.sh, benutzer.sh, passwort-hash.mjs
+deploy/               Caddyfile (TLS), Healthcheck
+Dockerfile, docker-compose.yml
 ```
 
 ## Fragen im Fragebogen anpassen

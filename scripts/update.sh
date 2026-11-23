@@ -41,6 +41,8 @@ zurueckrollen() {
   env_setzen STEUERBOT_IMAGE_TAG "$ALT_TAG"
   compose up -d --no-build >/dev/null || true
   if warte_gesund 120; then warn "Rollback erfolgreich – alte Version läuft wieder."; else log "${ROT}Rollback: App nicht gesund – bitte manuell prüfen (docker compose logs app).${AUS}"; fi
+  # Fehlgeschlagenes Image entfernen
+  [[ -n "${NEU_TAG:-}" ]] && docker rmi "steuerbot:$NEU_TAG" >/dev/null 2>&1 || true
   exit 1
 }
 

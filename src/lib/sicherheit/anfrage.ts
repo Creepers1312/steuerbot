@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { clientIp, erlaubt } from "./ratelimit";
-import { SITZUNGS_COOKIE, authKonfig, pruefeSitzung } from "./sitzung";
+import { SITZUNGS_COOKIE, authKonfig, gueltigeSitzung } from "./sitzung";
 
 /** Kennung für Rate-Limits: angemeldeter Benutzer, sonst IP. */
 export async function anfrageKennung(req: Request): Promise<string> {
@@ -13,7 +13,7 @@ export async function anfrageKennung(req: Request): Promise<string> {
       .map((c) => c.trim())
       .find((c) => c.startsWith(`${SITZUNGS_COOKIE}=`))
       ?.slice(SITZUNGS_COOKIE.length + 1);
-    const s = await pruefeSitzung(token, konf.geheimnis);
+    const s = await gueltigeSitzung(token, konf);
     if (s) return `u:${s.u}`;
   }
   return `ip:${clientIp(req)}`;

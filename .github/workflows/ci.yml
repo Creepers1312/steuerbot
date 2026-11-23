@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # wöchentlich neu prüfen – neue Schwachstellen in Abhängigkeiten/Basis-Images fallen so auch ohne Code-Änderung auf
+    - cron: "23 5 * * 1"
+
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -14,8 +20,40 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build
+      - name: Bekannte Schwachstellen in Produktions-Abhängigkeiten
+        run: npm audit --omit=dev --audit-level=high
+
+  container:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image bauen
+        run: docker build -t steuerbot:ci .
+      - name: Image auf Schwachstellen prüfen (HIGH/CRITICAL mit verfügbarem Fix)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: steuerbot:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Container-Smoke-Test (gehärtet wie im Betrieb)
+        run: |
+          docker run -d --name sb --read-only --tmpfs /tmp --tmpfs /app/.next/cache:uid=65532,gid=65532 \
+            --cap-drop ALL --security-opt no-new-privileges -p 3000:3000 steuerbot:ci
+          for i in $(seq 1 30); do curl -fs localhost:3000/api/health && break; sleep 1; done
+          # Ohne Konfiguration muss die App gesperrt sein (sicherer Standard)
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/)" = "503"
+          docker rm -f sb
+
+  skripte:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck -x -P scripts scripts/*.sh

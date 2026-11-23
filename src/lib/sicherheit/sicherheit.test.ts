@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { dateitypAusInhalt } from "./anfrage";
 import { hashePasswort, pruefePasswort } from "./passwort";
 import { erlaubt, ipGekuerzt } from "./ratelimit";
-import { authKonfig, pruefeSitzung, signiereSitzung } from "./sitzung";
+import { authKonfig, fingerabdruck, gueltigeSitzung, pruefeSitzung, signiereSitzung } from "./sitzung";
 
 const GEHEIM = "x".repeat(40);
 const jetzt = () => Math.floor(Date.now() / 1000);
@@ -23,6 +23,20 @@ describe("Sitzungs-Token", () => {
     expect(await pruefeSitzung(alt, GEHEIM)).toBeNull();
     expect(await pruefeSitzung(undefined, GEHEIM)).toBeNull();
     expect(await pruefeSitzung("a.b.c", GEHEIM)).toBeNull();
+  });
+});
+
+describe("Sitzung an Benutzer und Passwort gebunden", () => {
+  it("endet bei geändertem Passwort oder entferntem Benutzer", async () => {
+    vi.stubEnv("STEUERBOT_SESSION_SECRET", GEHEIM);
+    vi.stubEnv("STEUERBOT_BENUTZER", "anna=scrypt.1.1.1.salzalt.hashALT1234567890abcdef");
+    const t = await signiereSitzung({ u: "anna", iat: jetzt(), exp: jetzt() + 60, h: fingerabdruck("scrypt.1.1.1.salzalt.hashALT1234567890abcdef") }, GEHEIM);
+    expect(await gueltigeSitzung(t, authKonfig())).not.toBeNull();
+    vi.stubEnv("STEUERBOT_BENUTZER", "anna=scrypt.1.1.1.salzneu.hashNEUzyxwvutsrqponmlk");
+    expect(await gueltigeSitzung(t, authKonfig())).toBeNull();
+    vi.stubEnv("STEUERBOT_BENUTZER", "ben=scrypt.1.1.1.x.hashALT1234567890abcdef");
+    expect(await gueltigeSitzung(t, authKonfig())).toBeNull();
+    vi.unstubAllEnvs();
   });
 });
 

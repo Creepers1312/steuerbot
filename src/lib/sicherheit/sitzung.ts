@@ -12,6 +12,8 @@ export interface Sitzung {
   exp: number;
   /** Ausgestellt (Unix-Sekunden) */
   iat: number;
+  /** Fingerabdruck des Passwort-Hashes – ändert sich das Passwort oder wird der Benutzer entfernt, endet die Sitzung */
+  h?: string;
 }
 
 const enc = new TextEncoder();
@@ -60,7 +62,12 @@ export interface AuthKonfig {
   fehlkonfiguriert: boolean;
   geheimnis: string;
   sitzungStunden: number;
+  /** Benutzername → Fingerabdruck des aktuellen Passwort-Hashes */
+  fingerabdruecke: Map<string, string>;
 }
+
+/** Kurzer Fingerabdruck eines gespeicherten Hashes (letzte 16 Zeichen – nicht umkehrbar, kein Rückschluss aufs Passwort). */
+export const fingerabdruck = (hash: string) => hash.slice(-16);
 
 /** Liest die Anmelde-Konfiguration aus der Umgebung (sicherer Standard: in Produktion Pflicht). */
 export function authKonfig(): AuthKonfig {
@@ -69,9 +76,23 @@ export function authKonfig(): AuthKonfig {
   const aus = process.env.STEUERBOT_AUTH === "aus";
   const produktion = process.env.NODE_ENV === "production";
   const sitzungStunden = Math.min(24, Math.max(1, Number(process.env.STEUERBOT_SITZUNG_STUNDEN) || 8));
-  const konfiguriert = benutzer.length > 0 && geheimnis.length >= 32;
-  if (aus) return { aktiv: false, fehlkonfiguriert: false, geheimnis, sitzungStunden };
-  if (konfiguriert) return { aktiv: true, fehlkonfiguriert: false, geheimnis, sitzungStunden };
+  const fingerabdruecke = new Map<string, string>();
+  for (const eintrag of benutzer.split(",")) {
+    const i = eintrag.indexOf("=");
+    if (i > 0) fingerabdruecke.set(eintrag.slice(0, i).trim().toLowerCase(), fingerabdruck(eintrag.slice(i + 1).trim()));
+  }
+  const konfiguriert = fingerabdruecke.size > 0 && geheimnis.length >= 32;
+  const basis = { geheimnis, sitzungStunden, fingerabdruecke };
+  if (aus) return { ...basis, aktiv: false, fehlkonfiguriert: false };
+  if (konfiguriert) return { ...basis, aktiv: true, fehlkonfiguriert: false };
   // Entwicklung ohne Konfiguration: offen; Produktion ohne Konfiguration: gesperrt
-  return { aktiv: false, fehlkonfiguriert: produktion, geheimnis, sitzungStunden };
+  return { ...basis, aktiv: false, fehlkonfiguriert: produktion };
+}
+
+/** Sitzung gilt nur, wenn Signatur, Ablauf UND der aktuelle Passwort-Stand des Benutzers passen. */
+export async function gueltigeSitzung(token: string | undefined, konf: AuthKonfig): Promise<Sitzung | null> {
+  const s = await pruefeSitzung(token, konf.geheimnis);
+  if (!s) return null;
+  const fp = konf.fingerabdruecke.get(s.u);
+  return fp && s.h === fp ? s : null;
 }

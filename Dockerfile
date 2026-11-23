@@ -6,10 +6,9 @@
 #  3. runtime – minimales Distroless-Image ohne Shell/Paketmanager, läuft als Nicht-root
 #
 # Basis-Images sind über Build-Argumente austauschbar (z. B. Spiegel-Registry);
-# das Laufzeit-Image ist per Digest festgenagelt und wird über update.sh / Dependabot aktualisiert.
+# update.sh baut regelmäßig mit --pull neu (aktuelle Sicherheitsupdates des Build-Images).
 
 ARG BUILD_IMAGE=node:22-alpine
-ARG RUNTIME_IMAGE=gcr.io/distroless/nodejs22-debian12:nonroot@sha256:13593b7570658e8477de39e2f4a1dd25db2f836d68a0ba771251572d23bb4f8e
 
 FROM ${BUILD_IMAGE} AS deps
 WORKDIR /app
@@ -28,7 +27,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run lint && npx tsc --noEmit && npm test && npm run build
 
-FROM ${RUNTIME_IMAGE} AS runtime
+# Laufzeit-Image per Digest festgenagelt – Dependabot schlägt Aktualisierungen vor
+FROM gcr.io/distroless/nodejs22-debian12:nonroot@sha256:13593b7570658e8477de39e2f4a1dd25db2f836d68a0ba771251572d23bb4f8e AS runtime
 ARG VERSION=unbekannt
 LABEL org.opencontainers.image.title="Steuerbot" \
       org.opencontainers.image.description="Steuererstattung schätzen – Familienbetrieb" \

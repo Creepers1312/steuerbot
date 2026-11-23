@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { benutzerListe, dummyHash, pruefePasswort } from "@/lib/sicherheit/passwort";
 import { anzahl, clientIp, erlaubt, ipGekuerzt, protokoll, zuruecksetzen } from "@/lib/sicherheit/ratelimit";
-import { SITZUNGS_COOKIE, authKonfig, signiereSitzung } from "@/lib/sicherheit/sitzung";
+import { SITZUNGS_COOKIE, authKonfig, fingerabdruck, signiereSitzung } from "@/lib/sicherheit/sitzung";
 
 export const runtime = "nodejs";
 
@@ -40,7 +40,10 @@ export async function POST(req: Request) {
 
   zuruecksetzen(kUser);
   const jetzt = Math.floor(Date.now() / 1000);
-  const token = await signiereSitzung({ u: benutzer, iat: jetzt, exp: jetzt + konf.sitzungStunden * 3600 }, konf.geheimnis);
+  const token = await signiereSitzung(
+    { u: benutzer, iat: jetzt, exp: jetzt + konf.sitzungStunden * 3600, h: fingerabdruck(hash) },
+    konf.geheimnis,
+  );
   protokoll("login_erfolgreich", { benutzer, ip: ipGekuerzt(ip) });
 
   const res = NextResponse.json({ ok: true });

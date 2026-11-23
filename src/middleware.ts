@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SITZUNGS_COOKIE, authKonfig, pruefeSitzung } from "@/lib/sicherheit/sitzung";
+import { SITZUNGS_COOKIE, authKonfig, gueltigeSitzung } from "@/lib/sicherheit/sitzung";
 
 /**
  * Zentrale Schutzschicht für jede Anfrage:
@@ -69,7 +69,7 @@ export async function middleware(req: NextRequest) {
     );
   }
   if (konf.aktiv && !OEFFENTLICH.has(pathname)) {
-    const sitzung = await pruefeSitzung(req.cookies.get(SITZUNGS_COOKIE)?.value, konf.geheimnis);
+    const sitzung = await gueltigeSitzung(req.cookies.get(SITZUNGS_COOKIE)?.value, konf);
     if (!sitzung) {
       if (pathname.startsWith("/api/")) {
         return mitHeadern(NextResponse.json({ error: "Nicht angemeldet" }, { status: 401 }));
