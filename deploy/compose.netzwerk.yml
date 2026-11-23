@@ -1,0 +1,11 @@
+# Vorhandener Reverse-Proxy als Container (z. B. Nginx Proxy Manager): App ins Docker-Netz des Proxys hängen.
+# Im Proxy als Ziel eintragen: http://steuerbot-app:3000
+services:
+  app:
+    container_name: steuerbot-app
+    networks: [intern, proxy]
+
+networks:
+  proxy:
+    external: true
+    name: ${STEUERBOT_PROXY_NETZWERK:?STEUERBOT_PROXY_NETZWERK in .env setzen}

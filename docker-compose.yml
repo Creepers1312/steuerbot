@@ -1,0 +1,42 @@
+# Steuerbot – Betrieb mit Docker Compose (Basis: nur die App)
+#
+# Wie die App erreichbar ist, legt STEUERBOT_PROXY in .env fest – scripts/deploy.sh fragt das ab
+# und lädt automatisch die passende Ergänzung aus deploy/:
+#   caddy     → deploy/compose.caddy.yml    mitgelieferter TLS-Proxy auf 80/443 (Standard)
+#   traefik   → deploy/compose.traefik.yml  vorhandener Traefik (Docker-Labels)
+#   port      → deploy/compose.port.yml     Port auf dem Host (z. B. 127.0.0.1:3000) für nginx/Apache/Caddy
+#   netzwerk  → deploy/compose.netzwerk.yml vorhandenes Docker-Netz (z. B. Nginx Proxy Manager)
+#
+# Die App selbst läuft read-only, ohne Root-Rechte und ohne Capabilities.
+name: steuerbot
+
+services:
+  app:
+    image: steuerbot:${STEUERBOT_IMAGE_TAG:-latest}
+    build:
+      context: .
+      args:
+        BUILD_IMAGE: ${BUILD_IMAGE:-node:22-alpine}
+        VERSION: ${STEUERBOT_IMAGE_TAG:-latest}
+    env_file: .env
+    environment:
+      STEUERBOT_TRUST_PROXY: "1"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/.next/cache:size=64m,uid=65532,gid=65532
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    restart: unless-stopped
+    networks: [intern]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+networks:
+  intern: {}
