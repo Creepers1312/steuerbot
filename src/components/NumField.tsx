@@ -23,10 +23,12 @@ export function NumField({
   const [fehler, setFehler] = useState(false);
   return (
     <div className="field">
-      <label>
-        {label}
-        {hint && <span className="hint"> – {hint}</span>}
-      </label>
+      {label && (
+        <label>
+          {label}
+          {hint && <span className="hint"> – {hint}</span>}
+        </label>
+      )}
       <div className="input-unit">
         <input
           type="text"
@@ -36,6 +38,7 @@ export function NumField({
           value={text ?? formatZahlEingabe(value)}
           placeholder="0"
           aria-invalid={fehler}
+          aria-label={label || einheit}
           onFocus={(e) => {
             setText(formatZahlEingabe(value));
             e.currentTarget.select();

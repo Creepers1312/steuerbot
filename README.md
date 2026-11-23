@@ -6,7 +6,7 @@ Gedacht für den privaten Gebrauch in der Familie.
 
 ![Screenshot](docs/screenshot.png)
 
-<img src="docs/mobile.png" width="560" alt="Handy-Ansicht: Ergebnis, Angaben, Assistent"> <img src="docs/ausfuellhilfe.png" width="520" alt="Ausfüllhilfe">
+<img src="docs/fragebogen.png" width="560" alt="Fragebogen"> <img src="docs/mobile.png" width="560" alt="Handy-Ansicht: Ergebnis, Angaben, Assistent"> <img src="docs/ausfuellhilfe.png" width="520" alt="Ausfüllhilfe">
 
 ## Was die App kann
 
@@ -19,6 +19,10 @@ Gedacht für den privaten Gebrauch in der Familie.
   - Handwerker und haushaltsnahe Dienstleistungen (§ 35a)
   - Progressionsvorbehalt (Elterngeld, ALG I, Kurzarbeitergeld)
   - Transparente Aufschlüsselung und Hinweise (z. B. „Werbungskosten unter Pauschbetrag“)
+- **Geführter Fragebogen (ohne KI)**: arbeitet die Standardfragen im Chat-Stil ab – Ja/Nein- und Auswahl-Knöpfe,
+  Zahlen, Belege hochladen oder Werte eintippen. Fragen, die nicht passen, werden übersprungen (z. B. Kinder, Partner:in).
+  Nach jeder Antwort siehst du, wie sich die Erstattung ändert; jede Antwort lässt sich nachträglich ändern.
+  Funktioniert komplett ohne API-Schlüssel (dann ohne Beleg-Upload).
 - **KI-Assistent (Claude)**: Interview im Chat, trägt Angaben selbst ein, rechnet „Was wäre wenn“ durch
 - **Belege auslesen**: Foto oder PDF hochladen (Lohnsteuerbescheinigung, Gehaltsabrechnung, Handwerkerrechnung,
   Spendenquittung …), Werte prüfen und übernehmen
@@ -103,9 +107,16 @@ Abgabe erfolgt weiterhin über [Mein ELSTER](https://www.elster.de).
 
 ```
 src/lib/tax/          Rechenkern (params, tariff, engine, schema, hochrechnung, ausfuellhilfe) + Tests
+src/lib/interview/    Fragebogen: Fragenkatalog (katalog.ts) und Ablauf + Tests
 src/lib/assistant/    Claude-Anbindung: Werkzeug-Schleife, Belegerkennung, Änderungs-Patches
 src/app/api/chat      Chat-Endpunkt (Messages API + Werkzeuge, Streaming per Server-Sent Events)
 src/app/api/beleg     Beleg-Endpunkt (strukturierte Ausgabe)
 src/components/       Formular, Ergebnis, Chat
 src/middleware.ts     Optionaler Passwortschutz
 ```
+
+## Fragen im Fragebogen anpassen
+
+Alle Fragen stehen in `src/lib/interview/katalog.ts`. Jede Frage hat einen Text, optional eine Bedingung (`wenn`),
+eine Erklärung („Was heißt das?“) und eine Funktion, die die Antwort in den Datenstand schreibt. Neue Fragen einfügen,
+Texte ändern oder die Reihenfolge anpassen geht dort ohne weitere Änderungen; `npm test` prüft den Ablauf.

@@ -77,3 +77,31 @@ export function hochrechnen(g: Gehaltsabrechnung, jahr: SupportedYear): Hochgere
     avArbeitnehmer: r2(g.av * faktor + einmalSV.av),
   };
 }
+
+/**
+ * Schlägt eine (weitere) Sonderzahlung auf bereits hochgerechnete Jahreswerte auf.
+ * Ein negativer Betrag nimmt eine zuvor aufgeschlagene Zahlung wieder zurück.
+ */
+export function sonderzahlungAufschlagen(w: HochgerechneteWerte, betrag: number, jahr: SupportedYear): HochgerechneteWerte {
+  if (!betrag || w.bruttolohn <= 0) return w;
+  const sv = w.rvArbeitnehmer + w.kvArbeitnehmer + w.pvArbeitnehmer + w.avArbeitnehmer;
+  const zvE = Math.max(0, w.bruttolohn - sv - PARAMS[jahr].arbeitnehmerPauschbetrag - 36);
+  const t = PARAMS[jahr].tariff;
+  const mehrLSt = grundtarif(Math.max(0, zvE + betrag), t) - grundtarif(zvE, t);
+  const quote = betrag / w.bruttolohn;
+  const soliQuote = w.lohnsteuer > 0 ? w.soliEinbehalten / w.lohnsteuer : 0;
+  const kistQuote = w.lohnsteuer > 0 ? w.kirchensteuerEinbehalten / w.lohnsteuer : 0;
+  const lst = Math.max(0, w.lohnsteuer + mehrLSt);
+  const sk = (x: number) => r2(Math.max(0, x * (1 + quote)));
+  return {
+    bruttolohn: r2(Math.max(0, w.bruttolohn + betrag)),
+    lohnsteuer: r2(lst),
+    soliEinbehalten: r2(lst * soliQuote),
+    kirchensteuerEinbehalten: r2(lst * kistQuote),
+    rvArbeitnehmer: sk(w.rvArbeitnehmer),
+    rvArbeitgeber: sk(w.rvArbeitgeber),
+    kvArbeitnehmer: sk(w.kvArbeitnehmer),
+    pvArbeitnehmer: sk(w.pvArbeitnehmer),
+    avArbeitnehmer: sk(w.avArbeitnehmer),
+  };
+}

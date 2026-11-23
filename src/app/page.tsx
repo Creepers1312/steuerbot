@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Chat, { type ChatEintrag } from "@/components/Chat";
 import DatenFormular from "@/components/DatenFormular";
+import Fragebogen from "@/components/Fragebogen";
+import { LEERER_STAND, type InterviewStand } from "@/lib/interview/typen";
 import ElsterHilfe from "@/components/ElsterHilfe";
 import { ErgebnisDetails, ErgebnisHero } from "@/components/Ergebnis";
 import { berechne } from "@/lib/tax/engine";
@@ -14,6 +16,7 @@ interface Haushalt {
   input: TaxInput;
   eintraege: ChatEintrag[];
   history: unknown[];
+  interview?: InterviewStand;
 }
 
 type MobilTab = "ergebnis" | "angaben" | "assistent" | "elster";
@@ -46,6 +49,15 @@ export default function Home() {
   const [aktivId, setAktivId] = useState<string>("");
   const [ansicht, setAnsicht] = useState<"rechner" | "elster">("rechner");
   const [mobilTab, setMobilTab] = useState<MobilTab>("ergebnis");
+  const [modus, setModus] = useState<"fragebogen" | "ki">("fragebogen");
+  const [kiVerfuegbar, setKiVerfuegbar] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/status")
+      .then((r) => r.json())
+      .then((d) => setKiVerfuegbar(Boolean(d.ki)))
+      .catch(() => setKiVerfuegbar(false));
+  }, []);
 
   useEffect(() => {
     const list = laden();
@@ -148,6 +160,17 @@ export default function Home() {
     </>
   );
 
+  const umschalter = (
+    <div className="modus-umschalter" role="tablist">
+      <button role="tab" aria-selected={modus === "fragebogen"} className={modus === "fragebogen" ? "active" : ""} onClick={() => setModus("fragebogen")}>
+        📋 Fragebogen
+      </button>
+      <button role="tab" aria-selected={modus === "ki"} className={modus === "ki" ? "active" : ""} onClick={() => setModus("ki")}>
+        💬 KI-Chat
+      </button>
+    </div>
+  );
+
   const keineDaten = ergebnis.bereitsGezahlt.gesamt === 0 && ergebnis.summeEinkuenfte === 0;
   const plus = ergebnis.erstattung >= 0;
 
@@ -209,13 +232,27 @@ export default function Home() {
           )}
         </main>
         <aside className={`no-print ${cls(true, mobilTab === "assistent")}`}>
-          <Chat
-            input={aktiv.input}
-            onInputChange={(input) => aendern({ input })}
-            eintraege={aktiv.eintraege}
-            history={aktiv.history}
-            onChatChange={(eintraege, history) => aendern({ eintraege, history })}
-          />
+          {modus === "fragebogen" ? (
+            <Fragebogen
+              input={aktiv.input}
+              stand={aktiv.interview ?? LEERER_STAND}
+              kiVerfuegbar={kiVerfuegbar}
+              onChange={(input, interview) => aendern({ input, interview })}
+              onKiChat={() => setModus("ki")}
+              onZiel={(ziel) => wechseln(ziel)}
+              umschalter={umschalter}
+            />
+          ) : (
+            <Chat
+              input={aktiv.input}
+              onInputChange={(input) => aendern({ input })}
+              eintraege={aktiv.eintraege}
+              history={aktiv.history}
+              onChatChange={(eintraege, history) => aendern({ eintraege, history })}
+              kiVerfuegbar={kiVerfuegbar}
+              umschalter={umschalter}
+            />
+          )}
         </aside>
       </div>
 

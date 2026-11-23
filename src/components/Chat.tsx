@@ -16,6 +16,8 @@ interface Props {
   eintraege: ChatEintrag[];
   history: unknown[];
   onChatChange: (eintraege: ChatEintrag[], history: unknown[]) => void;
+  kiVerfuegbar?: boolean;
+  umschalter?: React.ReactNode;
 }
 
 const MAX_VERLAUF_NACHRICHTEN = 80;
@@ -52,7 +54,7 @@ const VORSCHLAEGE = [
   "Erklär mir, wie die Erstattung zustande kommt",
 ];
 
-export default function Chat({ input, onInputChange, eintraege, history, onChatChange }: Props) {
+export default function Chat({ input, onInputChange, eintraege, history, onChatChange, kiVerfuegbar = true, umschalter }: Props) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState("");
@@ -173,9 +175,15 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
   return (
     <div className="card chat" id="assistent">
       <div className="chat-head">
+        {umschalter}
         <h2>Steuer-Assistent</h2>
-        <p>Erzähl einfach, was im Jahr los war – ich trage es ein und zeige, was es bringt.</p>
+        <p>Für alles, was der Fragebogen nicht abdeckt – frag frei heraus.</p>
       </div>
+      {!kiVerfuegbar && (
+        <div className="hinweis-leiste">
+          Der KI-Chat braucht einen Claude-API-Schlüssel (ANTHROPIC_API_KEY). Der Fragebogen funktioniert auch ohne.
+        </div>
+      )}
 
       <div className="chat-log" ref={logRef}>
         {eintraege.length === 0 && (
