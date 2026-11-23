@@ -14,7 +14,15 @@ function Row({ label, value, sum, indent, minus }: { label: string; value: numbe
   );
 }
 
-export function ErgebnisHero({ r }: { r: TaxResult }) {
+export function ErgebnisHero({
+  r,
+  onAngaben,
+  onAssistent,
+}: {
+  r: TaxResult;
+  onAngaben?: () => void;
+  onAssistent?: () => void;
+}) {
   const plus = r.erstattung >= 0;
   const keineDaten = r.bereitsGezahlt.gesamt === 0 && r.summeEinkuenfte === 0;
   return (
@@ -34,6 +42,20 @@ export function ErgebnisHero({ r }: { r: TaxResult }) {
         <div className="sub" style={{ marginTop: 6 }}>
           Grenzsteuersatz {(r.grenzsteuersatz * 100).toFixed(1)} % – jeder weitere Euro Werbungskosten bringt etwa{" "}
           {Math.round(r.grenzsteuersatz * 100)} Cent.
+        </div>
+      )}
+      {(onAngaben || onAssistent) && (
+        <div className="hero-actions d-hide">
+          {onAssistent && (
+            <button className={keineDaten ? "primary" : "secondary"} onClick={onAssistent}>
+              💬 {keineDaten ? "Mit dem Assistenten starten" : "Assistent fragen"}
+            </button>
+          )}
+          {onAngaben && (
+            <button className="secondary" onClick={onAngaben}>
+              📝 {keineDaten ? "Selbst eintragen" : "Angaben bearbeiten"}
+            </button>
+          )}
         </div>
       )}
     </div>

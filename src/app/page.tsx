@@ -16,6 +16,8 @@ interface Haushalt {
   history: unknown[];
 }
 
+type MobilTab = "ergebnis" | "angaben" | "assistent" | "elster";
+
 const STORAGE_KEY = "steuerbot.haushalte.v1";
 
 function neuerHaushalt(name: string): Haushalt {
@@ -33,10 +35,17 @@ function laden(): Haushalt[] {
   }
 }
 
+const eur0 = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+
+/** Klassen: auf Desktop / auf dem Handy ausblenden */
+const cls = (desktopSichtbar: boolean, mobilSichtbar: boolean) =>
+  [desktopSichtbar ? "" : "d-hide", mobilSichtbar ? "" : "m-hide"].join(" ").trim();
+
 export default function Home() {
   const [haushalte, setHaushalte] = useState<Haushalt[] | null>(null);
   const [aktivId, setAktivId] = useState<string>("");
   const [ansicht, setAnsicht] = useState<"rechner" | "elster">("rechner");
+  const [mobilTab, setMobilTab] = useState<MobilTab>("ergebnis");
 
   useEffect(() => {
     const list = laden();
@@ -61,6 +70,13 @@ export default function Home() {
 
   const aendern = (patch: Partial<Haushalt>) =>
     setHaushalte((list) => list!.map((h) => (h.id === aktiv.id ? { ...h, ...patch } : h)));
+
+  const wechseln = (tab: MobilTab) => {
+    setMobilTab(tab);
+    // Ansicht für Drucken/Desktop mitführen
+    setAnsicht(tab === "elster" ? "elster" : "rechner");
+    window.scrollTo({ top: 0 });
+  };
 
   function hinzufuegen() {
     const name = prompt("Name des Haushalts (z. B. „Mama & Papa“):");
@@ -89,7 +105,12 @@ export default function Home() {
   async function importieren(file: File) {
     try {
       const h = JSON.parse(await file.text()) as Haushalt;
-      const neu: Haushalt = { ...neuerHaushalt(h.name ?? "Import"), input: parseTaxInput(h.input), eintraege: h.eintraege ?? [], history: h.history ?? [] };
+      const neu: Haushalt = {
+        ...neuerHaushalt(h.name ?? "Import"),
+        input: parseTaxInput(h.input),
+        eintraege: h.eintraege ?? [],
+        history: h.history ?? [],
+      };
       setHaushalte([...haushalte!, neu]);
       setAktivId(neu.id);
     } catch {
@@ -97,36 +118,73 @@ export default function Home() {
     }
   }
 
+  const haushaltAuswahl = (
+    <select value={aktiv.id} onChange={(e) => setAktivId(e.target.value)} className="tab" aria-label="Haushalt">
+      {haushalte.map((h) => (
+        <option key={h.id} value={h.id}>
+          {h.name}
+        </option>
+      ))}
+    </select>
+  );
+
+  const aktionen = (
+    <>
+      <button className="secondary" onClick={hinzufuegen}>
+        + Haushalt
+      </button>
+      <button className="secondary" onClick={exportieren} title="Als Datei sichern">
+        Sichern
+      </button>
+      <label className="secondary button-like">
+        Laden
+        <input type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importieren(e.target.files[0])} />
+      </label>
+      {haushalte.length > 1 && (
+        <button className="secondary" onClick={loeschen}>
+          Löschen
+        </button>
+      )}
+    </>
+  );
+
+  const keineDaten = ergebnis.bereitsGezahlt.gesamt === 0 && ergebnis.summeEinkuenfte === 0;
+  const plus = ergebnis.erstattung >= 0;
+
   return (
-    <div className="shell">
+    <div className="shell" data-mtab={mobilTab}>
+      {/* ---------- Kopfzeile ---------- */}
       <header className="header no-print">
         <div>
           <h1>Steuerbot</h1>
-          <p>Voraussichtliche Steuererstattung für Arbeitnehmer – mit KI-Assistent</p>
+          <p className="m-hide">Voraussichtliche Steuererstattung für Arbeitnehmer – mit KI-Assistent</p>
         </div>
-        <div className="row">
-          <select value={aktiv.id} onChange={(e) => setAktivId(e.target.value)} className="tab" aria-label="Haushalt">
-            {haushalte.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </select>
-          <button className="secondary" onClick={hinzufuegen}>+ Haushalt</button>
-          <button className="secondary" onClick={exportieren} title="Als Datei sichern">Sichern</button>
-          <label className="secondary" style={{ border: "1px solid var(--accent)", borderRadius: 8, padding: "8px 14px", color: "var(--accent)", cursor: "pointer" }}>
-            Laden
-            <input type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importieren(e.target.files[0])} />
-          </label>
-          {haushalte.length > 1 && (
-            <button className="secondary" onClick={loeschen}>Löschen</button>
-          )}
+        <div className="row m-hide">
+          {haushaltAuswahl}
+          {aktionen}
+        </div>
+        <div className="row d-hide">
+          {haushaltAuswahl}
+          <details className="menu">
+            <summary aria-label="Weitere Aktionen">⋯</summary>
+            <div className="menu-items">{aktionen}</div>
+          </details>
         </div>
       </header>
 
+      {/* ---------- Mini-Leiste mit Erstattung (nur Handy, außer im Ergebnis-Tab) ---------- */}
+      {mobilTab !== "ergebnis" && mobilTab !== "elster" && (
+        <button className="minibar d-hide no-print" onClick={() => wechseln("ergebnis")}>
+          <span>Voraussichtlich {aktiv.input.jahr}</span>
+          <strong className={keineDaten ? "" : plus ? "plus" : "minus"}>
+            {keineDaten ? "–" : `${plus ? "+" : "−"} ${eur0(Math.abs(ergebnis.erstattung))}`}
+          </strong>
+        </button>
+      )}
+
       <div className="layout">
         <main>
-          <div className="tabs no-print">
+          <div className="tabs no-print m-hide">
             <button className={`tab ${ansicht === "rechner" ? "active" : ""}`} onClick={() => setAnsicht("rechner")}>
               Rechner
             </button>
@@ -134,17 +192,23 @@ export default function Home() {
               Ausfüllhilfe für ELSTER
             </button>
           </div>
-          {ansicht === "rechner" ? (
-            <>
-              <ErgebnisHero r={ergebnis} />
-              <DatenFormular input={aktiv.input} onChange={(input) => aendern({ input })} />
-              <ErgebnisDetails r={ergebnis} />
-            </>
-          ) : (
-            <ElsterHilfe input={aktiv.input} r={ergebnis} />
+
+          <div className={cls(ansicht === "rechner", mobilTab === "ergebnis")}>
+            <ErgebnisHero r={ergebnis} onAngaben={() => wechseln("angaben")} onAssistent={() => wechseln("assistent")} />
+          </div>
+          <div className={cls(ansicht === "rechner", mobilTab === "angaben")}>
+            <DatenFormular input={aktiv.input} ergebnis={ergebnis} onChange={(input) => aendern({ input })} />
+          </div>
+          <div className={cls(ansicht === "rechner", mobilTab === "ergebnis")}>
+            <ErgebnisDetails r={ergebnis} />
+          </div>
+          {(ansicht === "elster" || mobilTab === "elster") && (
+            <div className={cls(ansicht === "elster", mobilTab === "elster")}>
+              <ElsterHilfe input={aktiv.input} r={ergebnis} />
+            </div>
           )}
         </main>
-        <aside className="no-print">
+        <aside className={`no-print ${cls(true, mobilTab === "assistent")}`}>
           <Chat
             input={aktiv.input}
             onInputChange={(input) => aendern({ input })}
@@ -154,11 +218,28 @@ export default function Home() {
           />
         </aside>
       </div>
-      <a href="#assistent" className="fab no-print">💬 Assistent</a>
-      <p className="disclaimer no-print">
+
+      <p className={`disclaimer no-print ${mobilTab === "assistent" ? "m-hide" : ""}`}>
         Deine Daten bleiben in diesem Browser. Nur Chat-Nachrichten, der Datenstand und hochgeladene Belege werden zur
         Auswertung an die Claude-API (Anthropic) gesendet.
       </p>
+
+      {/* ---------- Untere Navigation (nur Handy) ---------- */}
+      <nav className="bottomnav d-hide no-print" aria-label="Bereiche">
+        {(
+          [
+            ["ergebnis", "💶", "Ergebnis"],
+            ["angaben", "📝", "Angaben"],
+            ["assistent", "💬", "Assistent"],
+            ["elster", "📄", "ELSTER"],
+          ] as [MobilTab, string, string][]
+        ).map(([id, icon, label]) => (
+          <button key={id} className={mobilTab === id ? "active" : ""} onClick={() => wechseln(id)} aria-current={mobilTab === id}>
+            <span aria-hidden>{icon}</span>
+            {label}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

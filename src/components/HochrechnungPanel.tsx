@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { SupportedYear } from "@/lib/tax/params";
 import { hochrechnen, type Gehaltsabrechnung, type HochgerechneteWerte } from "@/lib/tax/hochrechnung";
+import { NumField } from "./NumField";
 
 const LEER: Gehaltsabrechnung = {
   modus: "monat",
@@ -43,7 +44,7 @@ export default function HochrechnungPanel({
 
   if (!offen) {
     return (
-      <button className="secondary" style={{ marginBottom: 8 }} onClick={() => setOffen(true)}>
+      <button className="secondary block" style={{ marginBottom: 10 }} onClick={() => setOffen(true)}>
         Noch keine Lohnsteuerbescheinigung? Aus Gehaltsabrechnung hochrechnen
       </button>
     );
@@ -75,28 +76,15 @@ export default function HochrechnungPanel({
           </select>
         </div>
         {FELDER.map(([k, label]) => (
-          <div className="field" key={k}>
-            <label>{label}</label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={g[k] || ""}
-              placeholder="0"
-              onChange={(e) => set(k, Math.max(0, Number(e.target.value) || 0))}
-            />
-          </div>
+          <NumField key={k} label={label} einheit="€" value={g[k] as number} onChange={(v) => set(k, v)} />
         ))}
-        <div className="field">
-          <label title="Weihnachtsgeld, Bonus – nur wenn nicht schon in den Werten oben enthalten">Noch erwartete Sonderzahlung (brutto)</label>
-          <input
-            type="number"
-            min={0}
-            value={g.einmalzahlungBrutto || ""}
-            placeholder="0"
-            onChange={(e) => set("einmalzahlungBrutto", Math.max(0, Number(e.target.value) || 0))}
-          />
-        </div>
+        <NumField
+          label="Noch erwartete Sonderzahlung"
+          hint="Weihnachtsgeld, Bonus – falls oben nicht enthalten"
+          einheit="€"
+          value={g.einmalzahlungBrutto}
+          onChange={(v) => set("einmalzahlungBrutto", v)}
+        />
       </div>
       {vorschau && (
         <p style={{ margin: "8px 0 0" }}>

@@ -61,6 +61,7 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
   const [belegPerson, setBelegPerson] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const kameraRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
@@ -153,6 +154,7 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
+      if (kameraRef.current) kameraRef.current.value = "";
     }
   }
 
@@ -180,7 +182,7 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
           <>
             <div className="msg assistant">
               Hallo! Ich helfe dir, deine voraussichtliche Steuererstattung zu schätzen. Am besten fangen wir mit deiner
-              Lohnsteuerbescheinigung an – du kannst sie auch fotografieren und mit 📎 hochladen.
+              Lohnsteuerbescheinigung an – du kannst sie auch einfach fotografieren.
             </div>
             <div className="chips">
               {VORSCHLAEGE.map((v) => (
@@ -243,6 +245,7 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
       >
         <textarea
           rows={2}
+          enterKeyHint="send"
           value={text}
           placeholder="z. B. „Ich fahre 23 km mit dem Auto, 3 Tage pro Woche“"
           onChange={(e) => setText(e.target.value)}
@@ -261,8 +264,19 @@ export default function Chat({ input, onInputChange, eintraege, history, onChatC
             hidden
             onChange={(e) => e.target.files?.[0] && belegHochladen(e.target.files[0])}
           />
-          <button type="button" className="secondary" onClick={() => fileRef.current?.click()} disabled={busy} title="Beleg hochladen">
-            📎 Beleg
+          <input
+            ref={kameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(e) => e.target.files?.[0] && belegHochladen(e.target.files[0])}
+          />
+          <button type="button" className="secondary d-hide" onClick={() => kameraRef.current?.click()} disabled={busy} title="Beleg fotografieren" aria-label="Beleg fotografieren">
+            📷<span className="btn-label"> Foto</span>
+          </button>
+          <button type="button" className="secondary" onClick={() => fileRef.current?.click()} disabled={busy} title="Beleg hochladen" aria-label="Beleg als Datei hochladen">
+            📎<span className="btn-label"> Beleg</span>
           </button>
           <span className="muted" style={{ flex: 1 }} />
           {eintraege.length > 0 && (

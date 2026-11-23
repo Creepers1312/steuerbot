@@ -6,7 +6,7 @@ Gedacht für den privaten Gebrauch in der Familie.
 
 ![Screenshot](docs/screenshot.png)
 
-<img src="docs/mobile.png" width="260" alt="Handy-Ansicht"> <img src="docs/ausfuellhilfe.png" width="520" alt="Ausfüllhilfe">
+<img src="docs/mobile.png" width="560" alt="Handy-Ansicht: Ergebnis, Angaben, Assistent"> <img src="docs/ausfuellhilfe.png" width="520" alt="Ausfüllhilfe">
 
 ## Was die App kann
 
@@ -27,6 +27,9 @@ Gedacht für den privaten Gebrauch in der Familie.
 - **Ausfüllhilfe für Mein ELSTER**: welche Angabe in welche Anlage gehört – zum Ausdrucken oder als PDF
 - Antworten des Assistenten erscheinen live (Streaming); lange Gespräche werden automatisch neu begonnen, der
   Datenstand bleibt erhalten
+- **Fürs Handy gemacht**: untere Navigation (Ergebnis · Angaben · Assistent · ELSTER), Erstattung immer oben
+  sichtbar, aufklappbare Abschnitte, Beträge mit Komma, Beleg direkt mit der Kamera fotografieren, als App auf den
+  Startbildschirm legbar („Zum Home-Bildschirm“)
 - **Mehrere Haushalte** (z. B. für Eltern, Geschwister), gespeichert im Browser, Export/Import als Datei
 
 ## Wichtig: Rechnen tut nie die KI
