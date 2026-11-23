@@ -24,7 +24,11 @@ const setH = (c: Ctx, allgemein: NonNullable<Patch["allgemein"]>): TaxInput => a
 /** Antwort zur selben Person / zum selben Kind (oder global) lesen. */
 export const antwort = (c: Ctx, id: string): unknown =>
   (c.antworten[`${id}@p${c.p}`] ?? c.antworten[`${id}@k${c.k}`] ?? c.antworten[id])?.wert;
-const hatLohn = (c: Ctx) => antwort(c, "lohn_quelle") !== "keiner" && (person(c).bruttolohn > 0 || antwort(c, "lohn_quelle") !== undefined);
+const istGrenzgaenger = (c: Ctx) => person(c).arbeitsland === "CH";
+const hatLohn = (c: Ctx) =>
+  istGrenzgaenger(c)
+    ? person(c).chBruttolohn > 0 || antwort(c, "lohnausweis_ch") !== undefined
+    : antwort(c, "lohn_quelle") !== "keiner" && (person(c).bruttolohn > 0 || antwort(c, "lohn_quelle") !== undefined);
 const eur = (n: number) => `${n.toLocaleString("de-DE", { maximumFractionDigits: 2 })} €`;
 
 const LSTB_FELDER = [
@@ -115,10 +119,122 @@ export const KATALOG: Frage[] = [
 
   // =========================== Lohn ===========================
   {
+    id: "arbeitsland",
+    kapitel: "lohn",
+    scope: "person",
+    typ: "auswahl",
+    text: (c) => du(c, "Wo sitzt dein Arbeitgeber?", "Wo sitzt der Arbeitgeber von {name}?"),
+    erklaerung:
+      "Grenzgänger:innen wohnen in Deutschland und arbeiten in der Schweiz – mit (fast) täglicher Rückkehr nach Hause. Dann besteuert Deutschland den Lohn, die Schweiz behält höchstens 4,5 % Quellensteuer ein, die hier angerechnet wird.",
+    optionen: () => [
+      { wert: "DE", label: "🇩🇪 Deutschland" },
+      { wert: "CH", label: "🇨🇭 Schweiz (Grenzgänger)" },
+    ],
+    aktuell: (c) => person(c).arbeitsland,
+    anwenden: (w, c) => setP(c, { arbeitsland: w as "DE" | "CH" }),
+  },
+  {
+    id: "lohnausweis_ch",
+    kapitel: "lohn",
+    scope: "person",
+    typ: "dokument",
+    wenn: istGrenzgaenger,
+    text: (c) => du(c, "Dann brauche ich deinen Schweizer Lohnausweis. Foto hochladen oder die Ziffern abtippen (in CHF):", "Dann den Schweizer Lohnausweis von {name}, bitte (in CHF):"),
+    erklaerung: "Den Lohnausweis bekommst du Anfang des Jahres vom Arbeitgeber. Wichtig sind Ziffer 8 (Bruttolohn), 9 (AHV/IV/EO/ALV/NBUV), 10 (Pensionskasse) und 12 (Quellensteuer).",
+    belegHinweis: "Lohnausweis",
+    felder: [
+      { key: "chBruttolohn", label: "Bruttolohn (Ziffer 8)", einheit: "CHF" },
+      { key: "chZiffer9", label: "AHV/IV/EO/ALV/NBUV (Ziffer 9)", einheit: "CHF" },
+      { key: "chBvg", label: "Pensionskasse (Ziffer 10)", einheit: "CHF" },
+      { key: "chQuellensteuer", label: "Quellensteuer (Ziffer 12)", einheit: "CHF" },
+    ],
+    aktuell: (c) => ({
+      chBruttolohn: person(c).chBruttolohn,
+      chZiffer9: person(c).chZiffer9,
+      chBvg: person(c).chBvg,
+      chQuellensteuer: person(c).chQuellensteuer,
+    }),
+    manuellAnwenden: (w, c) => setP(c, { ...w, arbeitsland: "CH" }),
+    belegAnwenden: (b, c) => {
+      if (b.belegart !== "lohnausweis_ch") return null;
+      const v = belegZuPatch(b, c.input, c.p);
+      return v.patch ? { input: applyPatch(c.input, v.patch), text: v.text } : null;
+    },
+  },
+  {
+    id: "bvg_ueber",
+    kapitel: "lohn",
+    scope: "person",
+    typ: "zahl",
+    einheit: "CHF",
+    vorschlaege: [0],
+    wenn: (c) => istGrenzgaenger(c) && person(c).chBvg > 0,
+    text: () => "Wie viel der Pensionskassenbeiträge ist überobligatorisch? (Steht im Pensionskassenausweis – wenn du es nicht weißt: 0)",
+    erklaerung:
+      "Absetzbar wie die Rentenversicherung ist nur der gesetzlich vorgeschriebene (obligatorische) Teil. Der überobligatorische Teil zählt kaum. Mit 0 wird die Erstattung eher etwas zu optimistisch geschätzt.",
+    aktuell: (c) => person(c).chBvgUeberobligatorisch,
+    anwenden: (n, c) => setP(c, { chBvgUeberobligatorisch: Math.min(n, person(c).chBvg) }),
+  },
+  {
+    id: "nichtrueckkehr",
+    kapitel: "lohn",
+    scope: "person",
+    typ: "zahl",
+    einheit: "Tage",
+    ganzzahl: true,
+    vorschlaege: [0],
+    wenn: istGrenzgaenger,
+    text: () => "An wie vielen Arbeitstagen bist du aus beruflichen Gründen nicht nach Hause zurückgekehrt (z. B. Dienstreisen mit Übernachtung)?",
+    erklaerung: "Bis 60 solcher Tage bleibst du Grenzgänger:in. Bei mehr gelten andere Regeln, die diese App nicht abbildet.",
+    aktuell: (c) => person(c).nichtrueckkehrtage,
+    anwenden: (n, c) => setP(c, { nichtrueckkehrtage: n }),
+  },
+  {
+    id: "kv_ch",
+    kapitel: "lohn",
+    scope: "person",
+    typ: "auswahl",
+    wenn: istGrenzgaenger,
+    text: (c) => du(c, "Wo bist du krankenversichert?", "Wo ist {name} krankenversichert?"),
+    erklaerung:
+      "Grenzgänger:innen zahlen die Krankenversicherung ohne Arbeitgeberzuschuss selbst. Die Beiträge für die Basisabsicherung sind voll als Sonderausgaben absetzbar.",
+    optionen: () => [
+      { wert: "gkv", label: "🇩🇪 Gesetzlich (Deutschland)" },
+      { wert: "pkv", label: "🇩🇪 Privat (Deutschland)" },
+      { wert: "kvg", label: "🇨🇭 Schweiz (KVG)" },
+    ],
+    aktuell: (c) => (antwort(c, "kv_ch") as string | undefined) ?? (person(c).chKvgPraemie > 0 ? "kvg" : undefined),
+    anwenden: (w, c) => (w === "kvg" ? setP(c, { kvArbeitnehmer: 0, pvArbeitnehmer: 0 }) : setP(c, { chKvgPraemie: 0, krankengeldAnspruch: w === "gkv" })),
+  },
+  {
+    id: "kv_beitrag",
+    kapitel: "lohn",
+    scope: "person",
+    typ: "zahl",
+    einheit: "€/Jahr",
+    wenn: (c) => istGrenzgaenger(c) && (antwort(c, "kv_ch") === "gkv" || antwort(c, "kv_ch") === "pkv"),
+    text: () => "Wie viel hast du im Jahr für Kranken- und Pflegeversicherung gezahlt?",
+    erklaerung: "Steht in der Beitragsbescheinigung deiner Krankenkasse. Bei privater Versicherung nur den Anteil für die Basisabsicherung (steht ebenfalls auf der Bescheinigung).",
+    aktuell: (c) => person(c).kvArbeitnehmer + person(c).pvArbeitnehmer,
+    anwenden: (n, c) => setP(c, { kvArbeitnehmer: n, pvArbeitnehmer: 0 }),
+  },
+  {
+    id: "kvg_praemie",
+    kapitel: "lohn",
+    scope: "person",
+    typ: "zahl",
+    einheit: "CHF/Jahr",
+    wenn: (c) => istGrenzgaenger(c) && antwort(c, "kv_ch") === "kvg",
+    text: () => "Wie hoch war deine Schweizer Krankenkassenprämie im Jahr?",
+    aktuell: (c) => person(c).chKvgPraemie,
+    anwenden: (n, c) => setP(c, { chKvgPraemie: n }),
+  },
+  {
     id: "lohn_quelle",
     kapitel: "lohn",
     scope: "person",
     typ: "auswahl",
+    wenn: (c) => !istGrenzgaenger(c),
     text: (c) =>
       du(
         c,
@@ -510,6 +626,19 @@ export const KATALOG: Frage[] = [
   },
 
   // =========================== Sonstiges ===========================
+  {
+    id: "vorauszahlungen",
+    kapitel: "sonstiges",
+    typ: "zahl",
+    einheit: "€",
+    vorschlaege: [0],
+    wenn: (c) => c.input.personen.slice(0, c.input.zusammenveranlagung ? 2 : 1).some((p) => p.arbeitsland === "CH"),
+    text: () => "Hast du ans Finanzamt Einkommensteuer-Vorauszahlungen geleistet? Wie viel insgesamt im Jahr (inkl. Soli und Kirchensteuer)?",
+    erklaerung:
+      "Weil der Schweizer Arbeitgeber keine deutsche Lohnsteuer abzieht, setzt das Finanzamt bei Grenzgänger:innen meist vierteljährliche Vorauszahlungen fest. Die stehen im letzten Steuerbescheid bzw. auf dem Kontoauszug.",
+    aktuell: (c) => c.input.vorauszahlungen,
+    anwenden: (n, c) => setH(c, { vorauszahlungen: n }),
+  },
   {
     id: "spenden",
     kapitel: "sonstiges",

@@ -10,6 +10,7 @@ export interface BelegDaten {
   betragGesamt: number | null;
   lohnkostenAnteil: number | null;
   lohnsteuerbescheinigung: Record<string, number | null> | null;
+  lohnausweisCh?: { ziffer8: number | null; ziffer9: number | null; ziffer10: number | null; ziffer12: number | null } | null;
   gehaltsabrechnung?: {
     monat: number | null;
     monatswerte: Record<string, number | null> | null;
@@ -57,6 +58,28 @@ export function belegZuPatch(b: BelegDaten, input: TaxInput, personIndex: number
       return {
         text: `Lohnsteuerbescheinigung: Brutto ${eur(l.bruttolohn ?? 0)}, Lohnsteuer ${eur(l.lohnsteuer ?? 0)} → ersetzt die Werte von ${p.name || "Person " + (personIndex + 1)}.`,
         patch: { personen: [{ index: personIndex, felder: { ...felder, ...(kist ? { kirchenmitglied: true } : {}) } }] },
+      };
+    }
+    case "lohnausweis_ch": {
+      const l = b.lohnausweisCh;
+      if (!l || typeof l.ziffer8 !== "number") return { text: "Keine Werte erkannt.", patch: null };
+      const chf = (n: number | null) => `${(n ?? 0).toLocaleString("de-DE")} CHF`;
+      return {
+        text: `Schweizer Lohnausweis: Brutto ${chf(l.ziffer8)}, Quellensteuer ${chf(l.ziffer12)} → ${p.name || "Person " + (personIndex + 1)} wird als Grenzgänger:in eingetragen.`,
+        patch: {
+          personen: [
+            {
+              index: personIndex,
+              felder: {
+                arbeitsland: "CH",
+                chBruttolohn: l.ziffer8,
+                chZiffer9: l.ziffer9 ?? 0,
+                chBvg: l.ziffer10 ?? 0,
+                chQuellensteuer: l.ziffer12 ?? 0,
+              },
+            },
+          ],
+        },
       };
     }
     case "gehaltsabrechnung": {

@@ -176,6 +176,27 @@ export default function DatenFormular({ input, ergebnis, onChange }: Props) {
             </div>
           </Abschnitt>
 
+          {input.personen.some((p) => p.arbeitsland === "CH") && (
+            <Abschnitt titel="Grenzgänger: Vorauszahlungen & Kurs" info={input.vorauszahlungen ? eur0(input.vorauszahlungen) : undefined} offen>
+              <div className="grid">
+                <NumField
+                  label="Geleistete Vorauszahlungen"
+                  hint="ans Finanzamt, inkl. Soli/KiSt"
+                  einheit="€"
+                  value={input.vorauszahlungen}
+                  onChange={(v) => update({ vorauszahlungen: v })}
+                />
+                <NumField
+                  label="Eigener Kurs"
+                  hint={`leer = amtlich (${ergebnis.chfKurs?.toLocaleString("de-DE") ?? "–"} € je CHF)`}
+                  einheit="€/CHF"
+                  value={input.chfKurs}
+                  onChange={(v) => update({ chfKurs: v })}
+                />
+              </div>
+            </Abschnitt>
+          )}
+
           <Abschnitt titel="Handwerker, Haushalt & Gesundheit" info={haushaltInfo ? eur0(haushaltInfo) : undefined}>
             <div className="grid">
               <NumField
@@ -230,11 +251,72 @@ function PersonForm({
           <label>Name</label>
           <input type="text" value={p.name} onChange={(e) => onChange({ name: e.target.value })} />
         </div>
+        <div className="field">
+          <label>Arbeitgeber in</label>
+          <select value={p.arbeitsland} onChange={(e) => onChange({ arbeitsland: e.target.value as "DE" | "CH" })}>
+            <option value="DE">Deutschland</option>
+            <option value="CH">Schweiz (Grenzgänger:in)</option>
+          </select>
+        </div>
         <div className="field field-check">
           <Check label="Kirchenmitglied" checked={p.kirchenmitglied} onChange={(v) => onChange({ kirchenmitglied: v })} />
         </div>
       </div>
 
+      {p.arbeitsland === "CH" ? (
+        <>
+          <Abschnitt
+            titel="Schweizer Lohnausweis"
+            info={p.chBruttolohn ? `Brutto ${Math.round(p.chBruttolohn).toLocaleString("de-DE")} CHF` : "noch leer"}
+            offen={!p.chBruttolohn}
+          >
+            <p className="muted" style={{ marginTop: 0 }}>
+              Beträge in Franken wie auf dem Lohnausweis – die App rechnet mit dem amtlichen Jahreskurs in Euro um.
+            </p>
+            <div className="grid">
+              <NumField label="Bruttolohn" hint="Ziffer 8" einheit="CHF" value={p.chBruttolohn} onChange={(v) => onChange({ chBruttolohn: v })} />
+              <NumField label="AHV/IV/EO/ALV/NBUV" hint="Ziffer 9" einheit="CHF" value={p.chZiffer9} onChange={(v) => onChange({ chZiffer9: v })} />
+              <NumField label="Pensionskasse (BVG)" hint="Ziffer 10" einheit="CHF" value={p.chBvg} onChange={(v) => onChange({ chBvg: v })} />
+              <NumField
+                label="davon überobligatorisch"
+                hint="Pensionskassenausweis, sonst 0"
+                einheit="CHF"
+                value={p.chBvgUeberobligatorisch}
+                onChange={(v) => onChange({ chBvgUeberobligatorisch: v })}
+              />
+              <NumField label="Quellensteuer" hint="Ziffer 12" einheit="CHF" value={p.chQuellensteuer} onChange={(v) => onChange({ chQuellensteuer: v })} />
+              <NumField
+                label="Nichtrückkehrtage"
+                hint="beruflich nicht heimgekehrt"
+                ganzzahl
+                einheit="Tage"
+                value={p.nichtrueckkehrtage}
+                onChange={(v) => onChange({ nichtrueckkehrtage: v })}
+              />
+              <NumField
+                label="Elterngeld / ALG I / Krankengeld"
+                einheit="€"
+                value={p.lohnersatzleistungen}
+                onChange={(v) => onChange({ lohnersatzleistungen: v })}
+              />
+            </div>
+          </Abschnitt>
+          <Abschnitt
+            titel="Krankenversicherung"
+            info={p.kvArbeitnehmer || p.chKvgPraemie ? "eingetragen" : "noch leer"}
+          >
+            <p className="muted" style={{ marginTop: 0 }}>
+              Grenzgänger zahlen die Krankenversicherung selbst. Trag ein, was du im Jahr gezahlt hast – entweder in
+              Deutschland (gesetzlich oder privat) oder in der Schweiz (KVG).
+            </p>
+            <div className="grid">
+              <NumField label="Krankenversicherung Deutschland" hint="Jahresbeitrag" einheit="€" value={p.kvArbeitnehmer} onChange={(v) => onChange({ kvArbeitnehmer: v })} />
+              <NumField label="Pflegeversicherung Deutschland" hint="Jahresbeitrag" einheit="€" value={p.pvArbeitnehmer} onChange={(v) => onChange({ pvArbeitnehmer: v })} />
+              <NumField label="Schweizer Krankenkasse (KVG)" hint="Jahresprämie" einheit="CHF" value={p.chKvgPraemie} onChange={(v) => onChange({ chKvgPraemie: v })} />
+            </div>
+          </Abschnitt>
+        </>
+      ) : (
       <Abschnitt
         titel="Lohnsteuerbescheinigung"
         info={p.bruttolohn ? `Brutto ${eur0(p.bruttolohn)}` : "noch leer"}
@@ -268,6 +350,7 @@ function PersonForm({
           />
         </div>
       </Abschnitt>
+      )}
 
       <Abschnitt titel="Arbeitsweg & Homeoffice" info={wegInfo ? eur0(wegInfo) : undefined}>
         <div className="grid">

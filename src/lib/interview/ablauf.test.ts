@@ -20,6 +20,7 @@ describe("Fragebogen", () => {
     z = antworte(z, "verheiratet", false);
     z = antworte(z, "name@p0", "Anna");
     z = antworte(z, "kirche@p0", true);
+    z = antworte(z, "arbeitsland@p0", "DE");
     z = antworte(z, "lohn_quelle@p0", "lstb");
     z = antworte(z, "lstb@p0", { bruttolohn: 45_000, lohnsteuer: 6_000, rvArbeitnehmer: 4_185, rvArbeitgeber: 4_185, kvArbeitnehmer: 3_870, pvArbeitnehmer: 810, avArbeitnehmer: 585, kirchensteuerEinbehalten: 480 });
     z = antworte(z, "lohnersatz@p0", false);
@@ -118,6 +119,25 @@ describe("Fragebogen", () => {
     expect(z.input.personen[0].bruttolohn).toBe(50_000);
     z = beantworten(z.input, z.stand, sz, 3_000);
     expect(z.input.personen[0].bruttolohn).toBe(51_000);
+  });
+
+  it("Grenzgänger Schweiz: Lohnausweis, Krankenversicherung, Vorauszahlungen", () => {
+    let z = { input: defaultInput(), stand: LEERER_STAND };
+    const finde = (key: string) => schritte(z.input, z.stand).find((s) => s.key === key)!;
+    z = beantworten(z.input, z.stand, finde("arbeitsland@p0"), "CH");
+    const keys = schritte(z.input, z.stand).map((s) => s.key);
+    expect(keys).not.toContain("lohn_quelle@p0");
+    expect(keys).toEqual(expect.arrayContaining(["lohnausweis_ch@p0", "nichtrueckkehr@p0", "kv_ch@p0", "vorauszahlungen"]));
+    z = beantworten(z.input, z.stand, finde("lohnausweis_ch@p0"), { chBruttolohn: 90_000, chZiffer9: 5_800, chBvg: 5_000, chQuellensteuer: 4_050 });
+    expect(z.input.personen[0]).toMatchObject({ arbeitsland: "CH", chBruttolohn: 90_000, chQuellensteuer: 4_050 });
+    z = beantworten(z.input, z.stand, finde("kv_ch@p0"), "gkv");
+    z = beantworten(z.input, z.stand, finde("kv_beitrag@p0"), 8_000);
+    z = beantworten(z.input, z.stand, finde("vorauszahlungen"), 12_000);
+    // Werbungskosten-Fragen erscheinen auch für Grenzgänger
+    expect(schritte(z.input, z.stand).some((s) => s.key === "weg_art@p0")).toBe(true);
+    const r = berechne(z.input);
+    expect(r.bereitsGezahlt.quellensteuer).toBeGreaterThan(0);
+    expect(r.bereitsGezahlt.vorauszahlungen).toBe(12_000);
   });
 
   it("Überspringen lässt den Datenstand unverändert", () => {

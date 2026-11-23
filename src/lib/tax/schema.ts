@@ -38,6 +38,18 @@ export const PersonFields = z.object({
   gewerkschaftsbeitraege: euro.describe("Gewerkschaftsbeiträge in €"),
   gradDerBehinderung: z.number().int().min(0).max(100).describe("Grad der Behinderung (0, 20, 30 … 100)"),
   merkzeichenHilflos: z.boolean().describe("Merkzeichen H, Bl oder TBl im Schwerbehindertenausweis"),
+
+  // --- Grenzgänger Schweiz (Beträge laut Schweizer Lohnausweis in CHF) ---
+  arbeitsland: z
+    .enum(["DE", "CH"])
+    .describe("DE = Arbeitgeber in Deutschland (Lohnsteuerbescheinigung); CH = Grenzgänger in die Schweiz (Wohnsitz Deutschland, tägliche Rückkehr)"),
+  chBruttolohn: euro.describe("Schweizer Lohnausweis Ziffer 8: Bruttolohn in CHF"),
+  chZiffer9: euro.describe("Lohnausweis Ziffer 9: Beiträge AHV/IV/EO/ALV/NBUV in CHF"),
+  chBvg: euro.describe("Lohnausweis Ziffer 10: Beiträge berufliche Vorsorge (Pensionskasse) in CHF"),
+  chBvgUeberobligatorisch: euro.describe("Davon überobligatorischer Anteil der Pensionskassenbeiträge in CHF (laut Pensionskassenausweis, sonst 0)"),
+  chQuellensteuer: euro.describe("Lohnausweis Ziffer 12: einbehaltene Schweizer Quellensteuer in CHF"),
+  chKvgPraemie: euro.describe("Nur bei Schweizer Krankenversicherung (KVG): Jahresprämie in CHF"),
+  nichtrueckkehrtage: z.number().int().min(0).max(366).describe("Arbeitstage, an denen aus beruflichen Gründen nicht nach Hause zurückgekehrt wurde"),
 });
 
 const PERSON_DEFAULTS: z.infer<typeof PersonFields> = {
@@ -65,6 +77,14 @@ const PERSON_DEFAULTS: z.infer<typeof PersonFields> = {
   gewerkschaftsbeitraege: 0,
   gradDerBehinderung: 0,
   merkzeichenHilflos: false,
+  arbeitsland: "DE",
+  chBruttolohn: 0,
+  chZiffer9: 0,
+  chBvg: 0,
+  chBvgUeberobligatorisch: 0,
+  chQuellensteuer: 0,
+  chKvgPraemie: 0,
+  nichtrueckkehrtage: 0,
 };
 
 export const KindFields = z.object({
@@ -90,6 +110,8 @@ export const HaushaltFields = z.object({
     "Haushaltsnahe Dienstleistungen in € (Reinigung, Gartenpflege, Hausmeister, Treppenhaus – auch aus der Nebenkostenabrechnung)",
   ),
   handwerkerLohnkosten: euro.describe("Nur Arbeits- und Fahrtkosten aus Handwerkerrechnungen in € (ohne Material), per Überweisung bezahlt"),
+  vorauszahlungen: euro.describe("An das Finanzamt geleistete Einkommensteuer-Vorauszahlungen im Jahr (inkl. Soli/Kirchensteuer) in € – typisch bei Grenzgängern"),
+  chfKurs: z.number().min(0).max(5).describe("Eigener Umrechnungskurs Euro je CHF; 0 = amtlicher Jahreskurs"),
 });
 
 const HAUSHALT_DEFAULTS: z.infer<typeof HaushaltFields> = {
@@ -103,6 +125,8 @@ const HAUSHALT_DEFAULTS: z.infer<typeof HaushaltFields> = {
   krankheitskosten: 0,
   haushaltsnaheDienstleistungen: 0,
   handwerkerLohnkosten: 0,
+  vorauszahlungen: 0,
+  chfKurs: 0,
 };
 
 function stripUndefined<T extends object>(o: T): Partial<T> {

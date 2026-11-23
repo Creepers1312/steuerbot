@@ -56,6 +56,7 @@ body {
 .hero .amount.plus { color: var(--accent); }
 .hero .amount.minus { color: var(--danger); }
 .hero .sub { color: var(--muted); font-size: 13px; }
+.hero .hinweis-grenz { margin-top: 10px; background: var(--danger-soft); color: var(--text); border-radius: 8px; padding: 8px 10px; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 14px; }
 .field { display: flex; flex-direction: column; gap: 4px; }

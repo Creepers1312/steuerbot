@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { berechne, zumutbareBelastung } from "./engine";
+import { berechne, zumutbareBelastung, ziffer9Aufteilen } from "./engine";
 import { PARAMS } from "./params";
 import { parseTaxInput } from "./schema";
 import { grundtarif, splittingtarif, tarifMitProgressionsvorbehalt } from "./tariff";
@@ -181,5 +181,71 @@ describe("Gesamtberechnung", () => {
   it("Erstattung = gezahlt − geschuldet", () => {
     const r = berechne(parseTaxInput({ personen: [basisPerson] }));
     expect(r.erstattung).toBeCloseTo(r.bereitsGezahlt.gesamt - r.steuerGesamt, 2);
+  });
+});
+
+describe("Grenzgänger Schweiz", () => {
+  const grenzgaenger = {
+    name: "Lena",
+    arbeitsland: "CH" as const,
+    chBruttolohn: 100_000,
+    chZiffer9: 6_400 + 1_000, // AHV 5,3 % + ALV 1,1 % + NBU 1.000
+    chBvg: 6_000,
+    chQuellensteuer: 4_500,
+    kvArbeitnehmer: 7_000, // freiwillig gesetzlich versichert in Deutschland, voller Beitrag
+    pvArbeitnehmer: 1_400,
+    entfernungKm: 30,
+    arbeitstageBuero: 200,
+    kontofuehrungspauschale: false,
+  };
+
+  it("teilt Lohnausweis Ziffer 9 in AHV, ALV und NBU", () => {
+    const t = ziffer9Aufteilen(100_000, 7_400);
+    expect(t.ahv).toBeCloseTo(5_300, 2);
+    expect(t.alv).toBeCloseTo(1_100, 2);
+    expect(t.nbu).toBeCloseTo(1_000, 2);
+  });
+
+  it("rechnet den Lohn mit dem Jahreskurs um und besteuert ihn voll in Deutschland", () => {
+    const r = berechne(parseTaxInput({ jahr: 2025, personen: [grenzgaenger] }));
+    expect(r.personen[0].bruttolohn).toBe(106_500);
+    expect(r.chfKurs).toBe(1.065);
+    // AHV + BVG wie Rentenversicherung: (5.300 + 6.000) × 1,065
+    // KV-Basis: 7.000 × 0,96 + 1.400 = 8.120 (> Höchstbetrag 2.800)
+    expect(r.vorsorgeaufwendungen).toBeCloseTo(11_300 * 1.065 + 8_120, 1);
+    // Werbungskosten: Pendlerpauschale 2025: 200 × (20 × 0,30 + 10 × 0,38)
+    expect(r.personen[0].werbungskostenAngesetzt).toBeCloseTo(1_960, 2);
+  });
+
+  it("rechnet höchstens 4,5 % Quellensteuer an", () => {
+    const r = berechne(parseTaxInput({ jahr: 2025, personen: [{ ...grenzgaenger, chQuellensteuer: 6_000 }] }));
+    expect(r.bereitsGezahlt.quellensteuer).toBeCloseTo(4_500 * 1.065, 2);
+    expect(r.hinweise.some((h) => h.includes("mehr als 4,5 %"))).toBe(true);
+  });
+
+  it("ohne Vorauszahlungen Nachzahlung, mit Vorauszahlungen entsprechend weniger", () => {
+    const ohne = berechne(parseTaxInput({ jahr: 2025, personen: [grenzgaenger] }));
+    expect(ohne.erstattung).toBeLessThan(0);
+    const mit = berechne(parseTaxInput({ jahr: 2025, personen: [grenzgaenger], vorauszahlungen: 10_000 }));
+    expect(mit.erstattung - ohne.erstattung).toBeCloseTo(10_000, 2);
+  });
+
+  it("warnt bei mehr als 60 Nichtrückkehrtagen", () => {
+    const r = berechne(parseTaxInput({ personen: [{ ...grenzgaenger, nichtrueckkehrtage: 61 }] }));
+    expect(r.hinweise.some((h) => h.includes("Grenzgängerregel greift nicht"))).toBe(true);
+  });
+
+  it("Ehepaar gemischt: eine Person in der Schweiz, eine in Deutschland", () => {
+    const r = berechne(
+      parseTaxInput({ jahr: 2025, zusammenveranlagung: true, personen: [grenzgaenger, { ...basisPerson, name: "Tom" }] }),
+    );
+    expect(r.personen.map((p) => p.arbeitsland)).toEqual(["CH", "DE"]);
+    expect(r.bereitsGezahlt.lohnsteuer).toBe(6_500);
+    expect(r.bereitsGezahlt.quellensteuer).toBeCloseTo(4_500 * 1.065, 2);
+  });
+
+  it("eigener Kurs überschreibt den amtlichen", () => {
+    const r = berechne(parseTaxInput({ jahr: 2026, chfKurs: 1.1, personen: [grenzgaenger] }));
+    expect(r.personen[0].bruttolohn).toBe(110_000);
   });
 });

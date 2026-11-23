@@ -31,13 +31,41 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
 
   personen.forEach((p, i) => {
     const name = p.name || `Person ${i + 1}`;
-    const e: Eintrag[] = [
-      {
-        feld: "Angaben aus der Lohnsteuerbescheinigung",
-        wert: `Brutto ${eur(p.bruttolohn)}, Lohnsteuer ${eur(p.lohnsteuer)}`,
-        hinweis: "Werden per Belegabruf automatisch übernommen – nur prüfen.",
-      },
-    ];
+    const chf = (n: number) => `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF`;
+    if (p.arbeitsland === "CH") {
+      abschnitte.push({
+        anlage: `Anlage N-Gre – ${name}`,
+        eintraege: [
+          { feld: "Arbeitslohn laut Lohnausweis (Ziffer 8)", wert: chf(p.chBruttolohn), hinweis: "In Franken eintragen – das Finanzamt rechnet um." },
+          { feld: "Einbehaltene Schweizer Abzugsteuer (Ziffer 12)", wert: chf(p.chQuellensteuer), hinweis: "Wird bis 4,5 % des Bruttolohns angerechnet." },
+          { feld: "Nichtrückkehrtage", wert: `${p.nichtrueckkehrtage}`, hinweis: "Bei mehr als 60 Tagen keine Grenzgängerregel." },
+          { feld: "Belege", wert: "Lohnausweis, ggf. Ansässigkeitsbescheinigung (Gre-1)", hinweis: "Lohnausweis als PDF beifügen bzw. bereithalten." },
+        ],
+      });
+      abschnitte.push({
+        anlage: `Anlage Vorsorgeaufwand – ${name} (Schweiz)`,
+        eintraege: [
+          { feld: "Beiträge zur Schweizer AHV/IV/EO", wert: chf(Math.min(p.chZiffer9, p.chBruttolohn * 0.053)), hinweis: "Arbeitnehmeranteil; Arbeitgeberanteil in gleicher Höhe (steuerfrei)." },
+          { feld: "Pensionskasse – obligatorischer Teil", wert: chf(Math.max(0, p.chBvg - p.chBvgUeberobligatorisch)) },
+          ...(p.chBvgUeberobligatorisch > 0 ? [{ feld: "Pensionskasse – überobligatorischer Teil", wert: chf(p.chBvgUeberobligatorisch) }] : []),
+          { feld: "Arbeitslosen- und Nichtberufsunfallversicherung", wert: chf(Math.max(0, p.chZiffer9 - Math.min(p.chZiffer9, p.chBruttolohn * 0.053))) },
+          ...(p.kvArbeitnehmer || p.pvArbeitnehmer
+            ? [{ feld: "Kranken-/Pflegeversicherung (selbst gezahlt, ohne Arbeitgeberzuschuss)", wert: eur(p.kvArbeitnehmer + p.pvArbeitnehmer) }]
+            : []),
+          ...(p.chKvgPraemie ? [{ feld: "Schweizer Krankenversicherung (KVG)", wert: chf(p.chKvgPraemie) }] : []),
+        ],
+      });
+    }
+    const e: Eintrag[] =
+      p.arbeitsland === "CH"
+        ? []
+        : [
+            {
+              feld: "Angaben aus der Lohnsteuerbescheinigung",
+              wert: `Brutto ${eur(p.bruttolohn)}, Lohnsteuer ${eur(p.lohnsteuer)}`,
+              hinweis: "Werden per Belegabruf automatisch übernommen – nur prüfen.",
+            },
+          ];
     if (p.entfernungKm > 0 && p.arbeitstageBuero > 0) {
       e.push({
         feld: "Wege zwischen Wohnung und erster Tätigkeitsstätte",
@@ -68,7 +96,10 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
         hinweis: "Das Finanzamt setzt automatisch 1.230 € an – Eintragen schadet nicht, bringt aber nichts.",
       });
     }
-    abschnitte.push({ anlage: `Anlage N – ${name}`, eintraege: e });
+    abschnitte.push({
+      anlage: p.arbeitsland === "CH" ? `Anlage N – ${name} (Werbungskosten)` : `Anlage N – ${name}`,
+      eintraege: e.length ? e : [{ feld: "Werbungskosten", wert: "nur Pauschbetrag", hinweis: "Keine weiteren Angaben nötig." }],
+    });
 
     if (p.gradDerBehinderung > 0 || p.merkzeichenHilflos) {
       abschnitte.push({
@@ -84,7 +115,7 @@ export function ausfuellhilfe(input: TaxInput, r: TaxResult): Abschnitt[] {
     }
   });
 
-  abschnitte.push({
+  if (personen.some((p) => p.arbeitsland !== "CH")) abschnitte.push({
     anlage: "Anlage Vorsorgeaufwand",
     eintraege: [
       {

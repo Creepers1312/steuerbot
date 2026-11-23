@@ -10,6 +10,7 @@ import {
   BUNDESLAENDER,
   PARAGRAPH_35A,
   PARAMS,
+  SCHWEIZ,
   type YearParams,
 } from "./params";
 import type { Person, TaxInput } from "./schema";
@@ -31,6 +32,9 @@ export interface PersonErgebnis {
   vorsorgeaufwendungen: number;
   behindertenPauschbetrag: number;
   progressionsvorbehalt: number;
+  arbeitsland: "DE" | "CH";
+  /** Grenzgänger: anrechenbare Schweizer Quellensteuer in € (max. 4,5 % des Bruttolohns) */
+  quellensteuerAnrechenbar: number;
 }
 
 export interface TaxResult {
@@ -57,7 +61,17 @@ export interface TaxResult {
   soli: number;
   kirchensteuer: number;
   steuerGesamt: number;
-  bereitsGezahlt: { lohnsteuer: number; soli: number; kirchensteuer: number; gesamt: number };
+  bereitsGezahlt: {
+    lohnsteuer: number;
+    soli: number;
+    kirchensteuer: number;
+    /** Angerechnete Schweizer Quellensteuer (Grenzgänger) */
+    quellensteuer: number;
+    vorauszahlungen: number;
+    gesamt: number;
+  };
+  /** Verwendeter Umrechnungskurs Euro je CHF (nur wenn Grenzgänger vorhanden) */
+  chfKurs?: number;
   /** > 0: Erstattung, < 0: Nachzahlung */
   erstattung: number;
   grenzsteuersatz: number;
@@ -112,11 +126,43 @@ function werbungskosten(p: Person, prm: YearParams) {
 function vorsorge(p: Person, prm: YearParams): number {
   const alters = Math.max(0, Math.min(p.rvArbeitnehmer + p.rvArbeitgeber, prm.altersvorsorgeHoechstbetrag) - p.rvArbeitgeber);
   const basisKvPv = p.kvArbeitnehmer * (p.krankengeldAnspruch ? 0.96 : 1) + p.pvArbeitnehmer;
-  const sonstige = Math.max(
-    basisKvPv,
-    Math.min(prm.sonstigeVorsorgeHoechstbetrag, p.kvArbeitnehmer + p.pvArbeitnehmer + p.avArbeitnehmer),
-  );
+  // Grenzgänger tragen ihre Krankenversicherung ohne steuerfreien Arbeitgeberzuschuss → höherer Höchstbetrag
+  const hoechst = p.arbeitsland === "CH" ? SCHWEIZ.sonstigeVorsorgeOhneZuschuss : prm.sonstigeVorsorgeHoechstbetrag;
+  const sonstige = Math.max(basisKvPv, Math.min(hoechst, p.kvArbeitnehmer + p.pvArbeitnehmer + p.avArbeitnehmer));
   return r2(alters + sonstige);
+}
+
+/** Aufteilung von Lohnausweis Ziffer 9 in AHV/IV/EO (Altersvorsorge) und ALV/NBU (sonstige Vorsorge). */
+export function ziffer9Aufteilen(brutto: number, ziffer9: number) {
+  const ahv = Math.min(ziffer9, brutto * SCHWEIZ.ahvSatz);
+  const alv = Math.min(ziffer9 - ahv, Math.min(brutto, SCHWEIZ.alvHoechstlohn) * SCHWEIZ.alvSatz);
+  return { ahv, alv, nbu: Math.max(0, ziffer9 - ahv - alv) };
+}
+
+/**
+ * Grenzgänger Schweiz: Werte aus dem Lohnausweis (CHF) in die deutsche Systematik übertragen.
+ * - Bruttolohn (Ziffer 8) wird umgerechnet und voll in Deutschland besteuert.
+ * - AHV/IV/EO und BVG-Obligatorium wie gesetzliche Rentenversicherung (Arbeitgeberanteil gleich hoch, steuerfrei).
+ * - ALV, NBU und überobligatorische BVG-Beiträge als sonstige Vorsorgeaufwendungen.
+ * - Krankenversicherung: selbst gezahlte deutsche Beiträge (kv/pv) oder Schweizer KVG-Prämie.
+ */
+export function effektivePerson(p: Person, kurs: number): Person {
+  if (p.arbeitsland !== "CH") return p;
+  const { ahv, alv, nbu } = ziffer9Aufteilen(p.chBruttolohn, p.chZiffer9);
+  const bvgObligatorisch = Math.max(0, p.chBvg - p.chBvgUeberobligatorisch);
+  const rv = (ahv + bvgObligatorisch) * kurs;
+  return {
+    ...p,
+    bruttolohn: r2(p.chBruttolohn * kurs),
+    lohnsteuer: 0,
+    soliEinbehalten: 0,
+    kirchensteuerEinbehalten: 0,
+    rvArbeitnehmer: r2(rv),
+    rvArbeitgeber: r2(rv),
+    kvArbeitnehmer: r2(p.kvArbeitnehmer + p.chKvgPraemie * kurs),
+    krankengeldAnspruch: p.chKvgPraemie > 0 ? false : p.krankengeldAnspruch,
+    avArbeitnehmer: r2((alv + nbu + p.chBvgUeberobligatorisch) * kurs),
+  };
 }
 
 function behindertenPauschbetrag(p: Person): number {
@@ -149,7 +195,10 @@ export function zumutbareBelastung(gesamtbetrag: number, splitting: boolean, anz
 export function berechne(input: TaxInput): TaxResult {
   const prm = PARAMS[input.jahr];
   const splitting = input.zusammenveranlagung && input.personen.length === 2;
-  const personen = splitting ? input.personen : input.personen.slice(0, 1);
+  const originalPersonen = splitting ? input.personen : input.personen.slice(0, 1);
+  const hatGrenzgaenger = originalPersonen.some((p) => p.arbeitsland === "CH");
+  const kurs = input.chfKurs > 0 ? input.chfKurs : prm.chfKurs;
+  const personen = originalPersonen.map((p) => effektivePerson(p, kurs));
   const hinweise: string[] = [];
 
   // ---------- Einkünfte je Person ----------
@@ -170,8 +219,43 @@ export function berechne(input: TaxInput): TaxResult {
       vorsorgeaufwendungen: vorsorge(p, prm),
       behindertenPauschbetrag: behindertenPauschbetrag(p),
       progressionsvorbehalt: Math.max(0, p.lohnersatzleistungen - unverbrauchterPauschbetrag),
+      arbeitsland: p.arbeitsland,
+      quellensteuerAnrechenbar:
+        p.arbeitsland === "CH" ? r2(Math.min(p.chQuellensteuer, p.chBruttolohn * SCHWEIZ.quellensteuerMax) * kurs) : 0,
     };
   });
+
+  if (hatGrenzgaenger) {
+    for (const [i, p] of originalPersonen.entries()) {
+      if (p.arbeitsland !== "CH") continue;
+      const name = personenErgebnisse[i].name;
+      if (p.nichtrueckkehrtage > SCHWEIZ.maxNichtrueckkehrtage) {
+        hinweise.push(
+          `${name}: Mehr als ${SCHWEIZ.maxNichtrueckkehrtage} Nichtrückkehrtage – die Grenzgängerregel greift nicht. Dann besteuert die Schweiz den Lohn voll und Deutschland stellt ihn frei (Progressionsvorbehalt). Das rechnet diese App nicht – das Ergebnis ist für diesen Fall nicht verlässlich.`,
+        );
+      }
+      if (p.chQuellensteuer > p.chBruttolohn * SCHWEIZ.quellensteuerMax + 1) {
+        hinweise.push(
+          `${name}: Es wurde mehr als 4,5 % Quellensteuer einbehalten. Angerechnet werden nur 4,5 % – den Rest kannst du bei der Steuerverwaltung des Kantons zurückfordern (meist fehlte die Ansässigkeitsbescheinigung Gre-1).`,
+        );
+      }
+      if (p.chBvgUeberobligatorisch > 0) {
+        hinweise.push(
+          `${name}: Überobligatorische Arbeitgeberbeiträge zur Pensionskasse können in Deutschland teilweise steuerpflichtiger Arbeitslohn sein. Das ist hier nicht berücksichtigt – bei hohen Beiträgen kann die Steuer etwas höher ausfallen.`,
+        );
+      }
+    }
+    hinweise.push(
+      prm.chfKursVorlaeufig && !(input.chfKurs > 0)
+        ? `Umrechnung mit vorläufigem Kurs ${kurs.toLocaleString("de-DE")} € je CHF – der amtliche Jahreskurs ${input.jahr} wird erst nach Jahresende veröffentlicht.`
+        : `Umrechnung mit ${kurs.toLocaleString("de-DE")} € je CHF (Jahreskurs ${input.jahr}).`,
+    );
+    if (input.vorauszahlungen === 0) {
+      hinweise.push(
+        "Grenzgänger zahlen in Deutschland keine Lohnsteuer über den Arbeitgeber. Ohne Vorauszahlungen ergibt sich deshalb meist eine Nachzahlung – trag geleistete Vorauszahlungen ein, falls das Finanzamt welche festgesetzt hat.",
+      );
+    }
+  }
 
   for (const pe of personenErgebnisse) {
     if (pe.pauschbetragGenutzt && pe.bruttolohn > 0) {
@@ -284,13 +368,19 @@ export function berechne(input: TaxInput): TaxResult {
   }
 
   const steuerGesamt = r2(festzusetzendeESt + soli + kirchensteuer);
+  // Schweizer Quellensteuer wird auf die Einkommensteuer angerechnet (höchstens bis zu deren Höhe)
+  const quellensteuer = r2(
+    Math.min(festzusetzendeESt, personenErgebnisse.reduce((s, p) => s + p.quellensteuerAnrechenbar, 0)),
+  );
   const gezahlt = {
     lohnsteuer: r2(personen.reduce((s, p) => s + p.lohnsteuer, 0)),
     soli: r2(personen.reduce((s, p) => s + p.soliEinbehalten, 0)),
     kirchensteuer: r2(personen.reduce((s, p) => s + p.kirchensteuerEinbehalten, 0)),
+    quellensteuer,
+    vorauszahlungen: input.vorauszahlungen,
     gesamt: 0,
   };
-  gezahlt.gesamt = r2(gezahlt.lohnsteuer + gezahlt.soli + gezahlt.kirchensteuer);
+  gezahlt.gesamt = r2(gezahlt.lohnsteuer + gezahlt.soli + gezahlt.kirchensteuer + gezahlt.quellensteuer + gezahlt.vorauszahlungen);
 
   const summeBrutto = personen.reduce((s, p) => s + p.bruttolohn, 0);
 
@@ -319,6 +409,7 @@ export function berechne(input: TaxInput): TaxResult {
     kirchensteuer,
     steuerGesamt,
     bereitsGezahlt: gezahlt,
+    chfKurs: hatGrenzgaenger ? kurs : undefined,
     erstattung: r2(gezahlt.gesamt - steuerGesamt),
     grenzsteuersatz: grenzsteuersatz(zvE, prm.tariff, splitting),
     durchschnittssteuersatz: summeBrutto > 0 ? festzusetzendeESt / summeBrutto : 0,

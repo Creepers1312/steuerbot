@@ -28,6 +28,7 @@ Deine Aufgabe:
 - Für das laufende Jahr gibt es meist noch keine Lohnsteuerbescheinigung (sie kommt im Februar des Folgejahres). Frag dann nach der letzten Gehaltsabrechnung – am besten nach den Jahressummen bis zum Abrechnungsmonat – und nutze \`gehaltsabrechnung_hochrechnen\`. Frag auch nach noch ausstehendem Weihnachtsgeld oder Bonus.
 
 Grenzen:
+- Grenzgänger:innen in die Schweiz (Wohnsitz Deutschland, tägliche Rückkehr) werden unterstützt: Felder arbeitsland="CH" und ch… (Lohnausweis in CHF), Krankenversicherung selbst gezahlt, Vorauszahlungen. Bei mehr als 60 Nichtrückkehrtagen gilt die Grenzgängerregel nicht – dann zur Steuerberatung raten.
 - Du bist keine Steuerberatung. Bei Selbstständigkeit, Vermietung, Kapitalerträgen über dem Sparerpauschbetrag, Auslandseinkünften, Trennung/Scheidung oder Unterhalt empfiehl eine Steuerberatung oder einen Lohnsteuerhilfeverein; diese Fälle rechnet die App nicht.
 - Frage nie nach Steuer-ID, IBAN, Adresse oder Geburtsdatum – die werden für die Schätzung nicht gebraucht.
 - Das Ergebnis ist eine Schätzung. Die tatsächliche Erstattung steht erst im Steuerbescheid.
@@ -268,6 +269,7 @@ const num = (beschreibung: string) => z.number().nullable().describe(beschreibun
 export const BelegSchema = z.object({
   belegart: z.enum([
     "lohnsteuerbescheinigung",
+    "lohnausweis_ch",
     "gehaltsabrechnung",
     "handwerkerrechnung",
     "haushaltsnahe_dienstleistung",
@@ -297,6 +299,15 @@ export const BelegSchema = z.object({
       lohnersatzleistungen: num("Zeile 15 Kurzarbeitergeld u. ä."),
     })
     .nullable(),
+  lohnausweisCh: z
+    .object({
+      ziffer8: num("Schweizer Lohnausweis Ziffer 8: Bruttolohn in CHF"),
+      ziffer9: num("Ziffer 9: Beiträge AHV/IV/EO/ALV/NBUV in CHF"),
+      ziffer10: num("Ziffer 10 (10.1 + 10.2): berufliche Vorsorge in CHF"),
+      ziffer12: num("Ziffer 12: Quellensteuerabzug in CHF"),
+    })
+    .nullable()
+    .describe("Nur beim Schweizer Lohnausweis (Formular 11)"),
   gehaltsabrechnung: z
     .object({
       monat: num("Abrechnungsmonat 1–12"),
@@ -354,7 +365,7 @@ export async function belegAuslesen(
           file,
           {
             type: "text",
-            text: "Lies diesen Beleg für die deutsche Einkommensteuererklärung aus. Übernimm nur Beträge, die tatsächlich auf dem Beleg stehen; fehlende Werte sind null. Bei einer Lohnsteuerbescheinigung die Zeilennummern beachten. Persönliche Kennungen (Steuer-ID, eTIN, Adresse) nicht übernehmen.",
+            text: "Lies diesen Beleg für die deutsche Einkommensteuererklärung aus. Übernimm nur Beträge, die tatsächlich auf dem Beleg stehen; fehlende Werte sind null. Bei einer Lohnsteuerbescheinigung die Zeilennummern beachten, beim Schweizer Lohnausweis die Ziffern (Beträge in CHF). Persönliche Kennungen (Steuer-ID, eTIN, Adresse) nicht übernehmen.",
           },
         ],
       },

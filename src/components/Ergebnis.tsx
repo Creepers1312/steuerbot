@@ -44,6 +44,12 @@ export function ErgebnisHero({
           {Math.round(r.grenzsteuersatz * 100)} Cent.
         </div>
       )}
+      {!keineDaten && r.personen.some((p) => p.arbeitsland === "CH") && r.bereitsGezahlt.vorauszahlungen === 0 && !plus && (
+        <div className="sub hinweis-grenz">
+          Grenzgänger: Deutsche Steuer wird nicht vom Lohn abgezogen. Hast du Vorauszahlungen ans Finanzamt geleistet? Trag sie
+          unter „Angaben → Haushalt“ ein – sie mindern die Nachzahlung.
+        </div>
+      )}
       {(onAngaben || onAssistent) && (
         <div className="hero-actions d-hide">
           {onAssistent && (
@@ -88,7 +94,18 @@ export function ErgebnisDetails({ r }: { r: TaxResult }) {
           {r.soli > 0 && <Row label="+ Solidaritätszuschlag" value={r.soli} indent />}
           {r.kirchensteuer > 0 && <Row label="+ Kirchensteuer" value={r.kirchensteuer} indent />}
           <Row label="Steuer insgesamt" value={r.steuerGesamt} sum />
-          <Row label="Bereits gezahlt (Lohnsteuer, Soli, KiSt)" value={r.bereitsGezahlt.gesamt} />
+          {r.bereitsGezahlt.quellensteuer > 0 || r.bereitsGezahlt.vorauszahlungen > 0 ? (
+            <>
+              {r.bereitsGezahlt.lohnsteuer > 0 && (
+                <Row label="Lohnsteuer, Soli, KiSt (deutscher Arbeitgeber)" value={r.bereitsGezahlt.lohnsteuer + r.bereitsGezahlt.soli + r.bereitsGezahlt.kirchensteuer} indent />
+              )}
+              {r.bereitsGezahlt.quellensteuer > 0 && <Row label="Schweizer Quellensteuer (angerechnet)" value={r.bereitsGezahlt.quellensteuer} indent />}
+              {r.bereitsGezahlt.vorauszahlungen > 0 && <Row label="Vorauszahlungen ans Finanzamt" value={r.bereitsGezahlt.vorauszahlungen} indent />}
+              <Row label="Bereits gezahlt / angerechnet" value={r.bereitsGezahlt.gesamt} />
+            </>
+          ) : (
+            <Row label="Bereits gezahlt (Lohnsteuer, Soli, KiSt)" value={r.bereitsGezahlt.gesamt} />
+          )}
           <Row label={r.erstattung >= 0 ? "Erstattung" : "Nachzahlung"} value={Math.abs(r.erstattung)} sum />
         </tbody>
       </table>
@@ -114,7 +131,7 @@ export function ErgebnisDetails({ r }: { r: TaxResult }) {
 function Personenzeilen({ p }: { p: TaxResult["personen"][number] }) {
   return (
     <>
-      <Row label={`${p.name}: Bruttoarbeitslohn`} value={p.bruttolohn} />
+      <Row label={`${p.name}: Bruttoarbeitslohn${p.arbeitsland === "CH" ? " (Schweiz, in € umgerechnet)" : ""}`} value={p.bruttolohn} />
       {p.werbungskostenPosten.map((w) => (
         <Row key={w.label} label={w.label} value={w.betrag} indent />
       ))}

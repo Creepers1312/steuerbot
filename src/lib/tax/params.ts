@@ -59,6 +59,10 @@ export interface YearParams {
   /** Entlastungsbetrag für Alleinerziehende: erstes Kind / jedes weitere Kind */
   alleinerziehendErstesKind: number;
   alleinerziehendWeiteresKind: number;
+  /** Umrechnungskurs: Euro je 1 CHF (amtlicher Jahreskurs) */
+  chfKurs: number;
+  /** true = Jahreskurs noch nicht veröffentlicht, Schätzwert */
+  chfKursVorlaeufig: boolean;
 }
 
 export const PARAMS: Record<SupportedYear, YearParams> = {
@@ -93,6 +97,9 @@ export const PARAMS: Record<SupportedYear, YearParams> = {
     kindergeldMonat: 255,
     alleinerziehendErstesKind: 4_260,
     alleinerziehendWeiteresKind: 240,
+    // Finanzämter Baden-Württemberg: 100 CHF = 106,50 EUR
+    chfKurs: 1.065,
+    chfKursVorlaeufig: false,
   },
   2026: {
     year: 2026,
@@ -129,7 +136,25 @@ export const PARAMS: Record<SupportedYear, YearParams> = {
     kindergeldMonat: 259,
     alleinerziehendErstesKind: 4_260,
     alleinerziehendWeiteresKind: 240,
+    // Jahreskurs 2026 wird erst nach Jahresende veröffentlicht – Schätzwert, im Formular änderbar
+    chfKurs: 1.07,
+    chfKursVorlaeufig: true,
   },
+};
+
+/** Grenzgänger Schweiz (Art. 15a DBA Deutschland–Schweiz) */
+export const SCHWEIZ = {
+  /** Höchstsatz der Schweizer Quellensteuer für Grenzgänger, anrechenbar in Deutschland */
+  quellensteuerMax: 0.045,
+  /** Arbeitnehmeranteil AHV/IV/EO */
+  ahvSatz: 0.053,
+  /** Arbeitnehmeranteil ALV bis zum Höchstlohn */
+  alvSatz: 0.011,
+  alvHoechstlohn: 148_200,
+  /** Höchstbetrag sonstige Vorsorge, wenn Krankenversicherung ohne steuerfreien Zuschuss selbst getragen wird (§ 10 Abs. 4 EStG) */
+  sonstigeVorsorgeOhneZuschuss: 2_800,
+  /** Mehr Nichtrückkehrtage → keine Grenzgängereigenschaft */
+  maxNichtrueckkehrtage: 60,
 };
 
 /** Behinderten-Pauschbetrag nach § 33b Abs. 3 EStG (seit 2021). */

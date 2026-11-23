@@ -19,6 +19,10 @@ Gedacht für den privaten Gebrauch in der Familie.
   - Handwerker und haushaltsnahe Dienstleistungen (§ 35a)
   - Progressionsvorbehalt (Elterngeld, ALG I, Kurzarbeitergeld)
   - Transparente Aufschlüsselung und Hinweise (z. B. „Werbungskosten unter Pauschbetrag“)
+- **Grenzgänger:innen in die Schweiz** (Wohnsitz Deutschland, tägliche Rückkehr, Art. 15a DBA): Schweizer Lohnausweis
+  in CHF (Ziffer 8/9/10/12), Umrechnung mit dem amtlichen Jahreskurs, Anrechnung der Quellensteuer (max. 4,5 %),
+  AHV/IV/EO und BVG-Obligatorium wie Rentenversicherung, selbst gezahlte Krankenversicherung (Deutschland oder KVG),
+  Vorauszahlungen, Hinweis bei mehr als 60 Nichtrückkehrtagen; Ausfüllhilfe für die Anlage N-Gre
 - **Geführter Fragebogen (ohne KI)**: arbeitet die Standardfragen im Chat-Stil ab – Ja/Nein- und Auswahl-Knöpfe,
   Zahlen, Belege hochladen oder Werte eintippen. Fragen, die nicht passen, werden übersprungen (z. B. Kinder, Partner:in).
   Nach jeder Antwort siehst du, wie sich die Erstattung ändert; jede Antwort lässt sich nachträglich ändern.
@@ -85,6 +89,22 @@ so teuer. Prompt-Caching ist aktiviert.
 - An die Claude-API (Anthropic) gehen: Chat-Nachrichten, der aktuelle Datenstand (nur Zahlen, keine Steuer-ID/IBAN)
   und hochgeladene Belege. Der Assistent fragt bewusst nicht nach Steuer-ID, Adresse oder Bankdaten.
 - Für eine öffentliche App bräuchte es zusätzlich einen Auftragsverarbeitungsvertrag, eine Datenschutzerklärung usw.
+
+## Grenzgänger Schweiz – was genau gerechnet wird
+
+| Thema | Umsetzung |
+|---|---|
+| Arbeitslohn | Lohnausweis Ziffer 8 × Jahreskurs (2025: 100 CHF = 106,50 €; 2026 vorläufig 1,07 €/CHF, im Formular änderbar), voll in Deutschland steuerpflichtig |
+| Quellensteuer | Ziffer 12, angerechnet bis 4,5 % des Bruttolohns; Mehrbetrag → Hinweis auf Rückforderung in der Schweiz |
+| AHV/IV/EO | aus Ziffer 9 (5,3 % des Bruttolohns) – wie gesetzliche Rentenversicherung, Arbeitgeberanteil gleich hoch und steuerfrei |
+| ALV, NBU | Rest von Ziffer 9 – sonstige Vorsorgeaufwendungen |
+| Pensionskasse | Ziffer 10: obligatorischer Teil wie Rentenversicherung, überobligatorischer Teil als sonstige Vorsorge |
+| Krankenversicherung | selbst gezahlte Beiträge (Deutschland) oder KVG-Prämie (CHF) als Basisabsicherung; Höchstbetrag sonstige Vorsorge 2.800 € |
+| Vorauszahlungen | werden als bereits gezahlt verrechnet – ohne sie ergibt sich meist eine hohe Nachzahlung |
+
+Nicht abgebildet: mehr als 60 Nichtrückkehrtage (dann Freistellung mit Progressionsvorbehalt), steuerpflichtige
+überobligatorische Arbeitgeberbeiträge zur Pensionskasse, Kapitalleistungen/Vorbezüge aus der Pensionskasse,
+Säule 3a, Homeoffice-Sonderregeln im Sozialversicherungsrecht.
 
 ## Grenzen (bewusst nicht abgebildet)
 
